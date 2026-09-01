@@ -18,6 +18,17 @@ import com.example.engine.ui.UIJoystick
 import com.example.engine.ui.UILabel
 import com.example.engine.ui.UIPanel
 import com.example.studio.model.*
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
+
+enum class EditorToolMode {
+    SELECT_MOVE,
+    ROTATE,
+    SCALE,
+    BRUSH_PLACE
+}
 
 class StudioRuntimeScene(
     var project: GameProject,
@@ -27,8 +38,16 @@ class StudioRuntimeScene(
     var isPlayMode: Boolean = false
         private set
 
-    // Editor Viewport Navigation
+    var isGameOver: Boolean = false
+    var isGameWin: Boolean = false
+    var isPaused: Boolean = false
+
+    // Editor Viewport Navigation & Tools
     val editorCamera = Camera2D()
+    var activeTool: EditorToolMode = EditorToolMode.SELECT_MOVE
+    var brushPreset: String = "platform" // platform, coin, slime, spike
+    var showColliders: Boolean = true
+
     private var isDraggingNode = false
     private val dragStartNodePos = Vector2()
     private val dragStartTouchWorld = Vector2()
@@ -36,22 +55,28 @@ class StudioRuntimeScene(
     private val tempVec = Vector2()
 
     // Gameplay Runtime State
+    private var totalPlayTime: Float = 0f
     private var playerObject: GameObject? = null
     private var playerBody: RigidBody2DComponent? = null
     private var isGrounded = false
     var score: Int = 0
     var health: Int = 3
+    var maxHealth: Int = 3
+
+    // HUD Elements
     private var scoreLabel: UILabel? = null
     private var healthLabel: UILabel? = null
+    private var statusBanner: UILabel? = null
     private var virtualJoystick: UIJoystick? = null
     private var jumpButton: UIButton? = null
     private var shootButton: UIButton? = null
+    private var dashButton: UIButton? = null
 
     private val playObjects = mutableListOf<GameObject>()
 
     override fun onCreate() {
         super.onCreate()
-        camera.setBounds(-3000f, -3000f, 6000f, 6000f)
+        camera.setBounds(-8000f, -8000f, 16000f, 16000f)
         editorCamera.viewportWidth = 1280f
         editorCamera.viewportHeight = 720f
         editorCamera.position.set(640f, 360f)
@@ -66,12 +91,18 @@ class StudioRuntimeScene(
 
     fun enterPlayMode() {
         isPlayMode = true
+        isGameOver = false
+        isGameWin = false
+        isPaused = false
+        totalPlayTime = 0f
         cleanupPlayMode()
         setupPlayMode()
     }
 
     fun enterEditorMode() {
         isPlayMode = false
+        isGameOver = false
+        isGameWin = false
         cleanupPlayMode()
         setupEditorMode()
     }
@@ -100,39 +131,34 @@ class StudioRuntimeScene(
     private fun setupPlayMode() {
         score = 0
         health = 3
+        maxHealth = 3
         physicsWorld.gravity.set(project.gravityX, project.gravityY)
 
-        // Build Engine GameObjects from Project Nodes
         val nodeToObjMap = mutableMapOf<String, GameObject>()
 
-        project.nodes.filter { it.isVisible }.forEach { node ->
+        // 1. Instantiate Nodes
+        val sortedNodes = project.nodes.filter { it.isVisible }.sortedBy { it.zIndex }
+
+        sortedNodes.forEach { node ->
             val obj = GameObject(node.name)
             obj.transform.position.set(node.posX, node.posY)
             obj.transform.scale.set(node.scaleX, node.scaleY)
             obj.transform.rotationDegrees = node.rotation
 
-            // Visual Renderer
-            val nodeColor = node.color.toInt()
-            val nodeAlpha = node.alpha
-            val shapeName = node.spriteShape
-            val nw = node.width
-            val nh = node.height
+            val nodeCopy = node.copy()
 
-            // Custom procedural render component
+            // Custom procedural & texture render component
             obj.addComponent(object : Component() {
                 override fun onRender(renderer: Renderer) {
                     val tr = transform ?: return
-                    ShapeDrawer.drawNodeVisual(
-                        renderer = renderer,
-                        shape = shapeName,
-                        x = tr.worldPosition.x,
-                        y = tr.worldPosition.y,
-                        width = nw * tr.worldScale.x,
-                        height = nh * tr.worldScale.y,
-                        colorInt = nodeColor,
-                        alpha = nodeAlpha,
+                    val renderNode = nodeCopy.copy(
+                        posX = tr.worldPosition.x,
+                        posY = tr.worldPosition.y,
+                        scaleX = tr.worldScale.x,
+                        scaleY = tr.worldScale.y,
                         rotation = tr.worldRotation
                     )
+                    ShapeDrawer.drawNode(renderer, renderNode, totalPlayTime)
                 }
             })
 
@@ -162,33 +188,25 @@ class StudioRuntimeScene(
                     })
                 }
 
-                // Setup Collision Callbacks
+                // Setup Player
                 if (node.tag == "Player" || node.behavior == BehaviorType.PLATFORMER_PLAYER || node.behavior == BehaviorType.TOPDOWN_PLAYER) {
                     playerObject = obj
                     playerBody = rb
+                    health = node.health
+                    maxHealth = node.maxHealth
 
                     col.onCollisionEnter = { other, manifold ->
-                        if (manifold.normal.y < -0.5f) {
+                        if (manifold.normal.y < -0.4f) {
                             isGrounded = true
                         }
                     }
                     col.onCollisionStay = { other ->
-                        if (rb.velocity.y in -10f..10f) {
+                        if (rb.velocity.y in -15f..15f) {
                             isGrounded = true
                         }
                     }
                     col.onTriggerEnter = { triggerCol ->
-                        val hitTag = triggerCol.gameObject?.name ?: ""
-                        if (hitTag.contains("Coin", ignoreCase = true)) {
-                            score += 100
-                            scoreLabel?.text = "SCORE: $score"
-                            engine?.audioManager?.playSynthSound("coin")
-                            triggerCol.gameObject?.let { removeGameObject(it) }
-                        } else if (hitTag.contains("Spike", ignoreCase = true) || hitTag.contains("Hazard", ignoreCase = true)) {
-                            health = (health - 1).coerceAtLeast(0)
-                            healthLabel?.text = "HP: $health"
-                            engine?.audioManager?.playSynthSound("hit")
-                        }
+                        handlePlayerTrigger(triggerCol)
                     }
                 }
             }
@@ -212,63 +230,177 @@ class StudioRuntimeScene(
                 ))
             }
 
-            // Attached Behaviors
-            when (node.behavior) {
-                BehaviorType.AUTO_PATROL -> {
-                    val startX = node.posX
-                    val dist = node.patrolDistance
-                    val speed = node.moveSpeed
-                    var dir = 1f
-                    obj.addComponent(object : Component() {
-                        override fun onUpdate(dt: Float) {
-                            val tr = transform ?: return
-                            tr.position.x += dir * speed * dt
-                            if (tr.position.x > startX + dist) {
-                                dir = -1f
-                            } else if (tr.position.x < startX - dist) {
-                                dir = 1f
-                            }
-                        }
-                    })
-                }
-                BehaviorType.ORBIT_ROTATE -> {
-                    val rotSpeed = node.orbitSpeed
-                    obj.addComponent(object : Component() {
-                        override fun onUpdate(dt: Float) {
-                            val tr = transform ?: return
-                            tr.rotationDegrees += rotSpeed * dt
-                        }
-                    })
-                }
-                else -> {}
-            }
+            // Attached AI & Behaviors
+            attachNodeBehaviors(node, obj)
 
             addGameObject(obj)
             playObjects.add(obj)
             nodeToObjMap[node.id] = obj
         }
 
-        // Camera Follow Player
-        val followNodeId = project.cameraFollowId ?: project.nodes.find { it.behavior == BehaviorType.PLATFORMER_PLAYER || it.behavior == BehaviorType.TOPDOWN_PLAYER }?.id
-        if (followNodeId != null && nodeToObjMap.containsKey(followNodeId)) {
-            val targetTransform = nodeToObjMap[followNodeId]?.transform
-            if (targetTransform != null) {
-                camera.target = targetTransform
-                camera.smoothFactor = 8f
-            }
+        // Camera Follow Setup
+        val followTarget = playerObject?.transform ?: nodeToObjMap.values.firstOrNull()?.transform
+        if (followTarget != null) {
+            camera.target = followTarget
+            camera.smoothFactor = 6f
         }
 
-        // Build On-Screen Game Controls (Play HUD)
+        // Setup In-Game HUD Controls
         setupPlayHUD()
+    }
+
+    private fun handlePlayerTrigger(triggerCol: Collider2DComponent) {
+        val hitTag = triggerCol.gameObject?.name ?: ""
+        val eng = engine
+
+        if (hitTag.contains("Coin", ignoreCase = true)) {
+            score += 100
+            scoreLabel?.text = "SCORE: $score"
+            eng?.audioManager?.playSynthSound("coin")
+            camera.shake(0.2f)
+            triggerCol.gameObject?.let { removeGameObject(it) }
+        } else if (hitTag.contains("Gem", ignoreCase = true)) {
+            score += 500
+            scoreLabel?.text = "SCORE: $score"
+            eng?.audioManager?.playSynthSound("powerup")
+            camera.shake(0.3f)
+            triggerCol.gameObject?.let { removeGameObject(it) }
+        } else if (hitTag.contains("Heart", ignoreCase = true) || hitTag.contains("Potion", ignoreCase = true)) {
+            health = (health + 1).coerceAtMost(maxHealth)
+            healthLabel?.text = "HP: $health / $maxHealth"
+            eng?.audioManager?.playSynthSound("powerup")
+            triggerCol.gameObject?.let { removeGameObject(it) }
+        } else if (hitTag.contains("Spike", ignoreCase = true) || hitTag.contains("Hazard", ignoreCase = true) || hitTag.contains("Lava", ignoreCase = true)) {
+            health = (health - 1).coerceAtLeast(0)
+            healthLabel?.text = "HP: $health / $maxHealth"
+            eng?.audioManager?.playSynthSound("hit")
+            camera.shake(0.6f)
+            if (health <= 0) {
+                triggerGameOver()
+            }
+        } else if (hitTag.contains("Flag", ignoreCase = true) || hitTag.contains("Trophy", ignoreCase = true) || hitTag.contains("Goal", ignoreCase = true)) {
+            triggerGameWin()
+        }
+    }
+
+    private fun attachNodeBehaviors(node: GameNode, obj: GameObject) {
+        when (node.behavior) {
+            BehaviorType.ENEMY_PATROL, BehaviorType.AUTO_PATROL -> {
+                val startX = node.posX
+                val dist = node.patrolDistance
+                val speed = node.moveSpeed
+                var dir = 1f
+                obj.addComponent(object : Component() {
+                    override fun onUpdate(dt: Float) {
+                        if (isPaused || isGameOver || isGameWin) return
+                        val tr = transform ?: return
+                        tr.position.x += dir * speed * dt
+                        if (tr.position.x > startX + dist) {
+                            dir = -1f
+                        } else if (tr.position.x < startX - dist) {
+                            dir = 1f
+                        }
+                    }
+                })
+            }
+            BehaviorType.ENEMY_CHASER -> {
+                val speed = node.moveSpeed * 0.8f
+                val range = node.detectionRange
+                obj.addComponent(object : Component() {
+                    override fun onUpdate(dt: Float) {
+                        if (isPaused || isGameOver || isGameWin) return
+                        val tr = transform ?: return
+                        val pTr = playerObject?.transform ?: return
+                        val dist = hypot(pTr.worldPosition.x - tr.worldPosition.x, pTr.worldPosition.y - tr.worldPosition.y)
+                        if (dist < range) {
+                            val angle = atan2(pTr.worldPosition.y - tr.worldPosition.y, pTr.worldPosition.x - tr.worldPosition.x)
+                            tr.position.x += cos(angle) * speed * dt
+                            tr.position.y += sin(angle) * speed * dt
+                        }
+                    }
+                })
+            }
+            BehaviorType.ENEMY_SHOOTER -> {
+                var shootTimer = 0f
+                val interval = node.shootInterval
+                obj.addComponent(object : Component() {
+                    override fun onUpdate(dt: Float) {
+                        if (isPaused || isGameOver || isGameWin) return
+                        shootTimer += dt
+                        if (shootTimer >= interval) {
+                            shootTimer = 0f
+                            spawnEnemyProjectile(transform?.worldPosition ?: return)
+                        }
+                    }
+                })
+            }
+            BehaviorType.ORBIT_ROTATE -> {
+                val rotSpeed = node.orbitSpeed
+                obj.addComponent(object : Component() {
+                    override fun onUpdate(dt: Float) {
+                        val tr = transform ?: return
+                        tr.rotationDegrees += rotSpeed * dt
+                    }
+                })
+            }
+            else -> {}
+        }
+    }
+
+    private fun spawnEnemyProjectile(pos: Vector2) {
+        val proj = GameObject("EnemyBullet").setPosition(pos.x, pos.y + 10f)
+        proj.addComponent(object : Component() {
+            override fun onRender(renderer: Renderer) {
+                val tr = transform ?: return
+                renderer.drawCircle(tr.worldPosition.x, tr.worldPosition.y, 7f, 0xFFFF0055.toInt(), Paint.Style.FILL)
+            }
+        })
+        val rb = proj.addComponent(RigidBody2DComponent(bodyType = BodyType.DYNAMIC, gravityScale = 0f))
+        val pTr = playerObject?.transform
+        if (pTr != null) {
+            val angle = atan2(pTr.worldPosition.y - pos.y, pTr.worldPosition.x - pos.x)
+            rb.velocity.set(cos(angle) * 350f, sin(angle) * 350f)
+        } else {
+            rb.velocity.set(-300f, 0f)
+        }
+        val col = proj.addComponent(CircleCollider2D(radius = 7f).apply { isTrigger = true })
+        col.onTriggerEnter = { other ->
+            if (other.gameObject == playerObject) {
+                health = (health - 1).coerceAtLeast(0)
+                healthLabel?.text = "HP: $health / $maxHealth"
+                engine?.audioManager?.playSynthSound("hit")
+                camera.shake(0.5f)
+                removeGameObject(proj)
+                if (health <= 0) triggerGameOver()
+            }
+        }
+        addGameObject(proj)
+        playObjects.add(proj)
+    }
+
+    private fun triggerGameOver() {
+        isGameOver = true
+        engine?.audioManager?.playSynthSound("explosion")
+        camera.shake(0.8f)
+        statusBanner?.text = "GAME OVER - TAP TO RESTART"
+        statusBanner?.isVisible = true
+    }
+
+    private fun triggerGameWin() {
+        isGameWin = true
+        engine?.audioManager?.playSynthSound("powerup")
+        camera.shake(0.4f)
+        statusBanner?.text = "VICTORY! LEVEL COMPLETE!"
+        statusBanner?.isVisible = true
     }
 
     private fun setupPlayHUD() {
         val eng = engine ?: return
 
-        // Score & Health Top Panel
-        val hudPanel = UIPanel(width = 300f, height = 48f).apply {
+        // 1. Top HUD Bar
+        val hudPanel = UIPanel(width = 340f, height = 48f).apply {
             setAnchor(Anchor.TOP_LEFT, offsetX = 16f, offsetY = 16f)
-            backgroundColor = 0xCC0F172A.toInt()
+            backgroundColor = 0xDD0F172A.toInt()
             borderColor = 0xFF0284C7.toInt()
             borderWidth = 1.5f
             cornerRadius = 14f
@@ -280,90 +412,144 @@ class StudioRuntimeScene(
         }
         hudPanel.addChild(scoreLabel!!)
 
-        healthLabel = UILabel("HP: 3", fontSize = 16f, color = 0xFFEF4444.toInt(), typeface = Typeface.DEFAULT_BOLD).apply {
+        healthLabel = UILabel("HP: $health / $maxHealth", fontSize = 16f, color = 0xFFEF4444.toInt(), typeface = Typeface.DEFAULT_BOLD).apply {
             setAnchor(Anchor.CENTER_RIGHT, offsetX = -16f)
         }
         hudPanel.addChild(healthLabel!!)
 
-        // Virtual Joystick (Bottom Left)
-        virtualJoystick = UIJoystick(baseRadius = 60f, stickRadius = 30f).apply {
-            setAnchor(Anchor.BOTTOM_LEFT, offsetX = 30f, offsetY = -30f)
+        // Status Center Banner (Game Over / Victory)
+        statusBanner = UILabel("", fontSize = 24f, color = 0xFFFFFFFF.toInt(), typeface = Typeface.DEFAULT_BOLD).apply {
+            setAnchor(Anchor.CENTER, offsetY = -40f)
+            isVisible = false
+        }
+        uiCanvas.addElement(statusBanner!!)
+
+        // 2. Virtual Touch Joystick (Bottom Left)
+        virtualJoystick = UIJoystick(baseRadius = 64f, stickRadius = 32f).apply {
+            setAnchor(Anchor.BOTTOM_LEFT, offsetX = 32f, offsetY = -32f)
             baseColor = 0x44FFFFFF
-            stickColor = 0xAA0284C7.toInt()
+            stickColor = 0xCC0284C7.toInt()
         }
         uiCanvas.addElement(virtualJoystick!!)
 
-        // Jump Button (Bottom Right)
-        jumpButton = UIButton("JUMP", width = 84f, height = 84f).apply {
-            setAnchor(Anchor.BOTTOM_RIGHT, offsetX = -30f, offsetY = -30f)
+        // 3. Jump Button (Bottom Right)
+        jumpButton = UIButton("JUMP", width = 86f, height = 86f).apply {
+            setAnchor(Anchor.BOTTOM_RIGHT, offsetX = -28f, offsetY = -28f)
             normalBackgroundColor = 0xDD0284C7.toInt()
             fontSize = 15f
-            cornerRadius = 42f
+            cornerRadius = 43f
             onClick = {
-                val pBody = playerBody
-                if (pBody != null && isGrounded) {
-                    pBody.velocity.y = -720f
-                    isGrounded = false
-                    eng.audioManager.playSynthSound("jump")
+                if (isGameOver || isGameWin) {
+                    resetPlayMode()
+                } else {
+                    val pBody = playerBody
+                    if (pBody != null && isGrounded) {
+                        val force = project.nodes.find { it.behavior == BehaviorType.PLATFORMER_PLAYER }?.jumpForce ?: 650f
+                        pBody.velocity.y = -force
+                        isGrounded = false
+                        eng.audioManager.playSynthSound("jump")
+                    }
                 }
             }
         }
         uiCanvas.addElement(jumpButton!!)
 
-        // Action / Shoot Button
+        // 4. Fire Laser Button
         shootButton = UIButton("FIRE", width = 74f, height = 74f).apply {
-            setAnchor(Anchor.BOTTOM_RIGHT, offsetX = -130f, offsetY = -35f)
+            setAnchor(Anchor.BOTTOM_RIGHT, offsetX = -130f, offsetY = -34f)
             normalBackgroundColor = 0xDDEF4444.toInt()
             fontSize = 14f
             cornerRadius = 37f
             onClick = {
-                eng.audioManager.playSynthSound("laser")
-                spawnLaserBullet()
+                if (!isGameOver && !isGameWin) {
+                    eng.audioManager.playSynthSound("laser")
+                    spawnLaserBullet()
+                }
             }
         }
         uiCanvas.addElement(shootButton!!)
+
+        // 5. Dash / Action Button
+        dashButton = UIButton("DASH", width = 64f, height = 64f).apply {
+            setAnchor(Anchor.BOTTOM_RIGHT, offsetX = -220f, offsetY = -38f)
+            normalBackgroundColor = 0xDD10B981.toInt()
+            fontSize = 13f
+            cornerRadius = 32f
+            onClick = {
+                val pBody = playerBody
+                if (pBody != null && !isGameOver && !isGameWin) {
+                    val dirX = if (pBody.velocity.x >= 0) 1f else -1f
+                    pBody.velocity.x = dirX * 900f
+                    eng.audioManager.playSynthSound("powerup")
+                    camera.shake(0.3f)
+                }
+            }
+        }
+        uiCanvas.addElement(dashButton!!)
     }
 
     private fun spawnLaserBullet() {
         val player = playerObject ?: return
         val px = player.transform.worldPosition.x
         val py = player.transform.worldPosition.y
-        val bullet = GameObject("Bullet").setPosition(px + 30f, py)
+        val bullet = GameObject("PlayerBullet").setPosition(px + 32f, py)
         bullet.addComponent(object : Component() {
             override fun onRender(renderer: Renderer) {
                 val tr = transform ?: return
-                renderer.drawCircle(tr.worldPosition.x, tr.worldPosition.y, 8f, 0xFFFF0055.toInt(), Paint.Style.FILL)
+                renderer.drawCircle(tr.worldPosition.x, tr.worldPosition.y, 9f, 0xFF38BDF8.toInt(), Paint.Style.FILL)
+                renderer.drawCircle(tr.worldPosition.x, tr.worldPosition.y, 4f, 0xFFFFFFFF.toInt(), Paint.Style.FILL)
             }
         })
         val rb = bullet.addComponent(RigidBody2DComponent(bodyType = BodyType.DYNAMIC, gravityScale = 0f))
-        rb.velocity.set(800f, 0f)
-        bullet.addComponent(CircleCollider2D(radius = 8f).apply { isTrigger = true })
+        rb.velocity.set(850f, 0f)
+        val col = bullet.addComponent(CircleCollider2D(radius = 9f).apply { isTrigger = true })
+        col.onTriggerEnter = { other ->
+            val otherName = other.gameObject?.name ?: ""
+            if (otherName.contains("Enemy", ignoreCase = true) || otherName.contains("Slime", ignoreCase = true) || otherName.contains("Alien", ignoreCase = true)) {
+                score += 200
+                scoreLabel?.text = "SCORE: $score"
+                engine?.audioManager?.playSynthSound("explosion")
+                camera.shake(0.4f)
+                other.gameObject?.let { removeGameObject(it) }
+                removeGameObject(bullet)
+            }
+        }
         addGameObject(bullet)
         playObjects.add(bullet)
     }
 
     override fun onUpdate(dt: Float) {
+        totalPlayTime += dt
+
         if (isPlayMode) {
-            super.onUpdate(dt)
+            if (!isPaused && !isGameOver && !isGameWin) {
+                super.onUpdate(dt)
 
-            // Update Player Joystick Controls
-            val joystick = virtualJoystick
-            val pBody = playerBody
-            if (joystick != null && pBody != null) {
-                val inputX = joystick.value.x
-                val inputY = joystick.value.y
+                // Update Player Joystick Controls
+                val joystick = virtualJoystick
+                val pBody = playerBody
+                if (joystick != null && pBody != null) {
+                    val inputX = joystick.value.x
+                    val inputY = joystick.value.y
 
-                val isPlatformer = project.nodes.any { it.behavior == BehaviorType.PLATFORMER_PLAYER }
-                if (isPlatformer) {
-                    pBody.velocity.x = inputX * 360f
-                } else {
-                    // Top-Down movement
-                    pBody.velocity.x = inputX * 420f
-                    pBody.velocity.y = inputY * 420f
+                    val isPlatformer = project.nodes.any { it.behavior == BehaviorType.PLATFORMER_PLAYER }
+                    if (isPlatformer) {
+                        pBody.velocity.x = inputX * 380f
+                    } else {
+                        // Top-Down 8-way movement
+                        pBody.velocity.x = inputX * 450f
+                        pBody.velocity.y = inputY * 450f
+                    }
+                }
+
+                // Check pit fall
+                if (playerObject != null && (playerObject?.transform?.worldPosition?.y ?: 0f) > 2000f) {
+                    health = 0
+                    healthLabel?.text = "HP: 0 / $maxHealth"
+                    triggerGameOver()
                 }
             }
         } else {
-            // Editor Camera update
             camera.target = null
             camera.position.set(editorCamera.position.x, editorCamera.position.y)
             camera.zoom = editorCamera.zoom
@@ -372,13 +558,11 @@ class StudioRuntimeScene(
     }
 
     override fun onRender(renderer: Renderer) {
-        // Clear background
         renderer.clear(project.backgroundColor.toInt())
 
         if (isPlayMode) {
             super.onRender(renderer)
         } else {
-            // Render Editor World (Grid, Nodes, Selection Gizmo)
             renderEditorWorld(renderer)
         }
     }
@@ -386,12 +570,12 @@ class StudioRuntimeScene(
     private fun renderEditorWorld(renderer: Renderer) {
         renderer.beginCamera(camera)
 
-        // 1. Draw Godot Editor Grid
+        // 1. Editor Grid
         val gSize = project.gridSize
-        val viewLeft = camera.position.x - (1280f / camera.zoom) * 0.6f
-        val viewRight = camera.position.x + (1280f / camera.zoom) * 0.6f
-        val viewTop = camera.position.y - (720f / camera.zoom) * 0.6f
-        val viewBottom = camera.position.y + (720f / camera.zoom) * 0.6f
+        val viewLeft = camera.position.x - (1280f / camera.zoom) * 0.7f
+        val viewRight = camera.position.x + (1280f / camera.zoom) * 0.7f
+        val viewTop = camera.position.y - (720f / camera.zoom) * 0.7f
+        val viewBottom = camera.position.y + (720f / camera.zoom) * 0.7f
 
         val startX = (viewLeft / gSize).toInt() * gSize
         val startY = (viewTop / gSize).toInt() * gSize
@@ -412,29 +596,19 @@ class StudioRuntimeScene(
             gy += gSize
         }
 
-        // Axis crosshair (0,0)
-        renderer.drawLine(-500f, 0f, 500f, 0f, 0x88EF4444.toInt(), 2f)
-        renderer.drawLine(0f, -500f, 0f, 500f, 0x8822C55E.toInt(), 2f)
+        // Axes (0,0)
+        renderer.drawLine(-2000f, 0f, 2000f, 0f, 0x88EF4444.toInt(), 2f)
+        renderer.drawLine(0f, -2000f, 0f, 2000f, 0x8822C55E.toInt(), 2f)
 
         // Viewport Frame (0,0 to 1280,720)
         renderer.drawRect(0f, 0f, 1280f, 720f, 0x440284C7, Paint.Style.STROKE, 2f)
 
-        // 2. Render all Nodes
-        project.nodes.filter { it.isVisible }.forEach { node ->
-            ShapeDrawer.drawNodeVisual(
-                renderer = renderer,
-                shape = node.spriteShape,
-                x = node.posX,
-                y = node.posY,
-                width = node.width * node.scaleX,
-                height = node.height * node.scaleY,
-                colorInt = node.color.toInt(),
-                alpha = node.alpha,
-                rotation = node.rotation
-            )
+        // 2. Render all Nodes sorted by zIndex
+        project.nodes.filter { it.isVisible }.sortedBy { it.zIndex }.forEach { node ->
+            ShapeDrawer.drawNode(renderer, node, totalPlayTime)
 
-            // Draw Physics Collider Outlines in Editor
-            if (node.hasPhysics) {
+            // Draw Physics Collider Outlines
+            if (showColliders && node.hasPhysics) {
                 if (node.colliderShape == ColliderShapeType.CIRCLE) {
                     renderer.drawCircle(node.posX, node.posY, node.colliderRadius * node.scaleX, 0x8822C55E.toInt(), Paint.Style.STROKE, 1.5f)
                 } else {
@@ -445,7 +619,7 @@ class StudioRuntimeScene(
             }
         }
 
-        // 3. Render Selection Gizmo for Selected Node
+        // 3. Render Selection Gizmo & Handles
         val selected = project.findNode(project.selectedNodeId)
         if (selected != null) {
             val sw = selected.width * selected.scaleX
@@ -456,8 +630,8 @@ class StudioRuntimeScene(
             // Bounding box
             renderer.drawRect(left - 4f, top - 4f, sw + 8f, sh + 8f, 0xFF38BDF8.toInt(), Paint.Style.STROKE, 2f)
 
-            // Corner Handles
-            val handleSize = 10f / camera.zoom
+            // Scale Handles
+            val handleSize = 12f / camera.zoom
             val corners = listOf(
                 Pair(left - 4f, top - 4f),
                 Pair(left + sw + 4f, top - 4f),
@@ -469,8 +643,16 @@ class StudioRuntimeScene(
                 renderer.drawRect(cx - handleSize * 0.5f, cy - handleSize * 0.5f, handleSize, handleSize, 0xFF0284C7.toInt(), Paint.Style.STROKE, 1.5f)
             }
 
-            // Node Name Label in Editor
-            renderer.drawText(selected.name, left, top - 10f, 13f / camera.zoom, 0xFF38BDF8.toInt(), Paint.Align.LEFT, Typeface.DEFAULT_BOLD)
+            // Node Name Label
+            renderer.drawText(
+                "${selected.name} (${selected.nodeType.name})",
+                left,
+                top - 12f,
+                14f / camera.zoom,
+                0xFF38BDF8.toInt(),
+                Paint.Align.LEFT,
+                Typeface.DEFAULT_BOLD
+            )
         }
 
         renderer.endCamera()
@@ -478,17 +660,25 @@ class StudioRuntimeScene(
 
     override fun onTouch(event: TouchEvent): Boolean {
         if (isPlayMode) {
+            if ((isGameOver || isGameWin) && event.type == TouchType.UP) {
+                resetPlayMode()
+                return true
+            }
             return super.onTouch(event)
         }
 
-        // Editor Mode Touch Handling (Selection, Dragging, Pan, Zoom)
         val worldPos = camera.logicalToWorld(event.logicalPosition.x, event.logicalPosition.y, tempVec)
 
         when (event.type) {
             TouchType.DOWN -> {
                 lastTouchScreenPos.set(event.logicalPosition.x, event.logicalPosition.y)
 
-                // Check if tapped a node
+                if (activeTool == EditorToolMode.BRUSH_PLACE) {
+                    placeBrushNodeAt(worldPos.x, worldPos.y)
+                    return true
+                }
+
+                // Check selection / dragging
                 val hitNode = project.nodes.reversed().find { node ->
                     if (node.isLocked || !node.isVisible) return@find false
                     val hw = (node.width * node.scaleX) * 0.5f + 16f
@@ -530,7 +720,7 @@ class StudioRuntimeScene(
                         onNodeSelectedListener?.invoke(selected)
                     }
                 } else {
-                    // Pan Editor Camera
+                    // Pan Camera
                     val screenDx = (event.logicalPosition.x - lastTouchScreenPos.x) / camera.zoom
                     val screenDy = (event.logicalPosition.y - lastTouchScreenPos.y) / camera.zoom
                     editorCamera.position.x -= screenDx
@@ -545,5 +735,74 @@ class StudioRuntimeScene(
                 return true
             }
         }
+    }
+
+    private fun placeBrushNodeAt(wx: Float, wy: Float) {
+        var placeX = wx
+        var placeY = wy
+        if (project.gridSnap) {
+            val g = project.gridSize
+            placeX = (Math.round(placeX / g) * g).toFloat()
+            placeY = (Math.round(placeY / g) * g).toFloat()
+        }
+
+        val newNode = when (brushPreset) {
+            "platform" -> GameNode(
+                name = "Ground_${project.nodes.size + 1}",
+                nodeType = NodeType.STATIC_BODY_2D,
+                spriteShape = "platform",
+                posX = placeX,
+                posY = placeY,
+                width = 128f,
+                height = 32f,
+                hasPhysics = true,
+                bodyType = "STATIC"
+            )
+            "coin" -> GameNode(
+                name = "Coin_${project.nodes.size + 1}",
+                nodeType = NodeType.AREA_2D,
+                spriteShape = "coin",
+                posX = placeX,
+                posY = placeY,
+                width = 36f,
+                height = 36f,
+                hasPhysics = true,
+                isTrigger = true,
+                behavior = BehaviorType.COLLECTABLE_COIN
+            )
+            "slime" -> GameNode(
+                name = "SlimeEnemy_${project.nodes.size + 1}",
+                nodeType = NodeType.CHARACTER_BODY_2D,
+                spriteShape = "slime",
+                posX = placeX,
+                posY = placeY,
+                width = 48f,
+                height = 48f,
+                hasPhysics = true,
+                bodyType = "DYNAMIC",
+                behavior = BehaviorType.ENEMY_PATROL
+            )
+            "spike" -> GameNode(
+                name = "Spike_${project.nodes.size + 1}",
+                nodeType = NodeType.AREA_2D,
+                spriteShape = "spike",
+                posX = placeX,
+                posY = placeY,
+                width = 64f,
+                height = 32f,
+                hasPhysics = true,
+                isTrigger = true,
+                behavior = BehaviorType.HAZARD_SPIKE
+            )
+            else -> GameNode(
+                name = "Block_${project.nodes.size + 1}",
+                posX = placeX,
+                posY = placeY
+            )
+        }
+
+        project.addNode(newNode)
+        onNodeSelectedListener?.invoke(newNode)
+        engine?.audioManager?.playSynthSound("click")
     }
 }

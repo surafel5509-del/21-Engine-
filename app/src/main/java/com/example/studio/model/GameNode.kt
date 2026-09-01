@@ -4,29 +4,37 @@ import java.util.UUID
 
 enum class NodeType {
     NODE_2D,
+    CHARACTER_BODY_2D,
     SPRITE_2D,
+    ANIMATED_SPRITE_2D,
     RIGID_BODY_2D,
     STATIC_BODY_2D,
     AREA_2D,
     CPU_PARTICLES_2D,
     CAMERA_2D,
+    PARALLAX_BACKGROUND_2D,
+    CANVAS_LAYER_UI,
     LABEL_2D,
-    SPAWNER_2D,
-    LIGHT_2D
+    SPAWNER_2D
 }
 
 enum class BehaviorType {
     NONE,
     PLATFORMER_PLAYER,
     TOPDOWN_PLAYER,
+    ENEMY_PATROL,
+    ENEMY_CHASER,
+    ENEMY_SHOOTER,
+    COLLECTABLE_COIN,
+    COLLECTABLE_GEM,
+    COLLECTABLE_HEART,
+    HAZARD_SPIKE,
+    VICTORY_FLAG,
+    PORTAL_WARP,
     AUTO_PATROL,
     ORBIT_ROTATE,
-    SPAWNER,
-    COLLECTABLE_COIN,
-    HAZARD_SPIKE,
     FLAPPY_TAP,
-    BOUNCE_SCREEN,
-    FOLLOW_TARGET
+    BOUNCE_SCREEN
 }
 
 enum class ColliderShapeType {
@@ -36,11 +44,11 @@ enum class ColliderShapeType {
 
 data class VisualScriptRule(
     val id: String = UUID.randomUUID().toString(),
-    var trigger: String = "ON_COLLISION_ENTER", // ON_START, ON_UPDATE, ON_TOUCH_TAP, ON_COLLISION_ENTER, ON_TIMER, ON_JOYSTICK
-    var targetTag: String = "Any", // Any, Player, Enemy, Coin, Hazard, Ground
-    var action: String = "PLAY_SOUND", // PLAY_SOUND, ADD_SCORE, SPAWN_PARTICLES, APPLY_FORCE, DESTROY_SELF, RESTART_SCENE, CHANGE_COLOR
-    var paramString: String = "coin", // sound name or color or prefab
-    var paramFloat: Float = 100f // score value or impulse force
+    var trigger: String = "ON_COLLISION_ENTER", // ON_START, ON_UPDATE, ON_TOUCH_TAP, ON_COLLISION_ENTER, ON_TRIGGER_ENTER, ON_PLAYER_STOMP, ON_TIMER, ON_HEALTH_ZERO
+    var targetTag: String = "Any", // Any, Player, Enemy, Coin, Hazard, Ground, Goal
+    var action: String = "PLAY_SOUND", // PLAY_SOUND, ADD_SCORE, TAKE_DAMAGE, HEAL, APPLY_IMPULSE, SPAWN_PREFAB, PLAY_ANIMATION, CAMERA_SHAKE, DESTROY_SELF, RESTART_SCENE, GAME_WIN, GAME_OVER, TELEPORT_TO
+    var paramString: String = "coin", // sound name or prefab or clip
+    var paramFloat: Float = 100f // score value or impulse force or damage
 )
 
 data class GameNode(
@@ -63,14 +71,22 @@ data class GameNode(
     var parentId: String? = null,
     val childrenIds: MutableList<String> = mutableListOf(),
     
-    // Visual / Sprite
-    var spriteShape: String = "box", // box, circle, capsule, star, diamond, triangle, hero, spaceship, alien, coin, platform, spike, cloud, heart, gem, bullet
+    // Visual / Sprite & Custom Texture
+    var customTextureKey: String? = null,
+    var spriteShape: String = "box", // box, circle, capsule, star, diamond, hero, slime, spaceship, alien, coin, platform, spike, cloud, heart, gem, bullet, trophy, flag
     var color: Long = 0xFF0284C7, // ARGB
     var alpha: Float = 1.0f,
     var width: Float = 64f,
     var height: Float = 64f,
     var flipX: Boolean = false,
     var flipY: Boolean = false,
+
+    // Sprite Frame Animation
+    var isAnimated: Boolean = false,
+    var animationFps: Float = 8f,
+    var animationCols: Int = 4,
+    var animationRows: Int = 1,
+    var currentAnimation: String = "default",
     
     // Physics
     var hasPhysics: Boolean = false,
@@ -79,8 +95,9 @@ data class GameNode(
     var gravityScale: Float = 1.0f,
     var bounciness: Float = 0.2f,
     var friction: Float = 0.5f,
-    var fixedRotation: Boolean = false,
+    var fixedRotation: Boolean = true,
     var isTrigger: Boolean = false,
+    var isOneWay: Boolean = false,
     var colliderShape: ColliderShapeType = ColliderShapeType.BOX,
     var colliderWidth: Float = 64f,
     var colliderHeight: Float = 64f,
@@ -100,16 +117,27 @@ data class GameNode(
     var endSize: Float = 2f,
     var particleGravityY: Float = 0f,
     
-    // Behavior / Script
+    // Behavior / Script & AI
     var behavior: BehaviorType = BehaviorType.NONE,
     var moveSpeed: Float = 300f,
     var jumpForce: Float = 650f,
     var patrolDistance: Float = 200f,
     var orbitSpeed: Float = 90f,
+    var detectionRange: Float = 320f,
+    var shootInterval: Float = 2.0f,
     var spawnInterval: Float = 1.5f,
     var spawnPrefab: String = "bullet",
     var scoreValue: Int = 100,
     var soundOnAction: String = "jump",
+
+    // Combat & Health
+    var health: Int = 3,
+    var maxHealth: Int = 3,
+    var attackDamage: Int = 1,
+
+    // Parallax
+    var isParallax: Boolean = false,
+    var parallaxFactor: Float = 0.5f,
     
     // Visual Script Rules
     val customRules: MutableList<VisualScriptRule> = mutableListOf()

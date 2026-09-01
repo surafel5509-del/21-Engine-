@@ -1,5 +1,6 @@
 package com.example.studio.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,12 +16,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.studio.model.BehaviorType
 import com.example.studio.model.ColliderShapeType
 import com.example.studio.model.GameNode
+import com.example.studio.storage.CustomAssetManager
 
 @Composable
 fun InspectorDock(
@@ -53,22 +56,20 @@ fun InspectorDock(
             .padding(12.dp)
             .verticalScroll(scrollState)
     ) {
-        // Header with Node Name
+        // Header with Node Name & Tag
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(Icons.Default.Tune, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                "Inspector: ${selectedNode.name}",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
+            Column {
+                Text("Inspector: ${selectedNode.name}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Type: ${selectedNode.nodeType.name}", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         // 1. TRANSFORM SECTION
         InspectorSection(title = "Transform 2D", icon = Icons.Default.OpenWith) {
@@ -92,27 +93,96 @@ fun InspectorDock(
                 selectedNode.rotation = it
                 onNodeUpdated(selectedNode)
             }
+            NumberField(label = "Z-Index (Order)", value = selectedNode.zIndex.toFloat()) {
+                selectedNode.zIndex = it.toInt()
+                onNodeUpdated(selectedNode)
+            }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // 2. SPRITE & VISUAL SECTION
-        InspectorSection(title = "Sprite & Visual", icon = Icons.Default.Palette) {
-            // Sprite Shape Selection
-            val shapes = listOf("box", "circle", "hero", "spaceship", "alien", "coin", "platform", "spike", "gem", "heart")
-            Text("Sprite Shape:", color = Color(0xFF94A3B8), fontSize = 12.sp)
+        // 2. SPRITE & TEXTURE & ANIMATION SECTION
+        InspectorSection(title = "Sprite, Texture & Animation", icon = Icons.Default.Palette) {
+            // Attached Custom Texture
+            val customBmp = CustomAssetManager.getBitmap(selectedNode.customTextureKey)
+            if (customBmp != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0F172A), shape = RoundedCornerShape(8.dp))
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Image(
+                        bitmap = customBmp.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Custom Texture Attached", color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(selectedNode.customTextureKey ?: "", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                    }
+                    IconButton(
+                        onClick = {
+                            selectedNode.customTextureKey = null
+                            onNodeUpdated(selectedNode)
+                        },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Detach", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // Sprite Frame Animation Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Sprite Animation Engine", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Switch(
+                    checked = selectedNode.isAnimated,
+                    onCheckedChange = {
+                        selectedNode.isAnimated = it
+                        onNodeUpdated(selectedNode)
+                    }
+                )
+            }
+
+            if (selectedNode.isAnimated) {
+                NumberField(label = "Frame Columns (H)", value = selectedNode.animationCols.toFloat()) {
+                    selectedNode.animationCols = it.toInt().coerceAtLeast(1)
+                    onNodeUpdated(selectedNode)
+                }
+                NumberField(label = "Frame Rows (V)", value = selectedNode.animationRows.toFloat()) {
+                    selectedNode.animationRows = it.toInt().coerceAtLeast(1)
+                    onNodeUpdated(selectedNode)
+                }
+                NumberField(label = "Playback Speed (FPS)", value = selectedNode.animationFps) {
+                    selectedNode.animationFps = it.coerceIn(1f, 60f)
+                    onNodeUpdated(selectedNode)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            // Procedural Shape Selection
+            val shapes = listOf("hero", "slime", "platform", "coin", "spike", "flag", "spaceship", "alien", "gem", "heart", "circle", "box")
+            Text("Built-In Sprite Model:", color = Color(0xFF94A3B8), fontSize = 12.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                shapes.take(5).forEach { s ->
+                shapes.take(6).forEach { s ->
                     val isSelected = selectedNode.spriteShape.equals(s, ignoreCase = true)
                     AssistChip(
                         onClick = {
                             selectedNode.spriteShape = s
                             onNodeUpdated(selectedNode)
                         },
-                        label = { Text(s.capitalize(), fontSize = 11.sp) },
+                        label = { Text(s.capitalize(), fontSize = 10.sp) },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = if (isSelected) Color(0xFF0284C7) else Color(0xFF1E293B),
                             labelColor = if (isSelected) Color.White else Color(0xFFCBD5E1)
@@ -124,14 +194,14 @@ fun InspectorDock(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                shapes.drop(5).forEach { s ->
+                shapes.drop(6).forEach { s ->
                     val isSelected = selectedNode.spriteShape.equals(s, ignoreCase = true)
                     AssistChip(
                         onClick = {
                             selectedNode.spriteShape = s
                             onNodeUpdated(selectedNode)
                         },
-                        label = { Text(s.capitalize(), fontSize = 11.sp) },
+                        label = { Text(s.capitalize(), fontSize = 10.sp) },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = if (isSelected) Color(0xFF0284C7) else Color(0xFF1E293B),
                             labelColor = if (isSelected) Color.White else Color(0xFFCBD5E1)
@@ -187,18 +257,22 @@ fun InspectorDock(
                 selectedNode.height = it
                 onNodeUpdated(selectedNode)
             }
+            NumberField(label = "Alpha (0..1)", value = selectedNode.alpha) {
+                selectedNode.alpha = it.coerceIn(0f, 1f)
+                onNodeUpdated(selectedNode)
+            }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // 3. PHYSICS & COLLIDER SECTION
-        InspectorSection(title = "RigidBody2D & Collider", icon = Icons.Default.SportsBasketball) {
+        // 3. 2D PHYSICS & COLLIDERS
+        InspectorSection(title = "2D Physics & Collider", icon = Icons.Default.SportsBasketball) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Enable Physics", color = Color.White, fontSize = 13.sp)
+                Text("Enable Physics Simulation", color = Color.White, fontSize = 12.sp)
                 Switch(
                     checked = selectedNode.hasPhysics,
                     onCheckedChange = {
@@ -224,16 +298,31 @@ fun InspectorDock(
                     }
                 }
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Is Trigger (Area/Sensor)", color = Color.White, fontSize = 12.sp)
+                    Switch(
+                        checked = selectedNode.isTrigger,
+                        onCheckedChange = {
+                            selectedNode.isTrigger = it
+                            onNodeUpdated(selectedNode)
+                        }
+                    )
+                }
+
                 NumberField(label = "Bounciness (0..1)", value = selectedNode.bounciness) {
                     selectedNode.bounciness = it.coerceIn(0f, 1f)
                     onNodeUpdated(selectedNode)
                 }
-                NumberField(label = "Mass (kg)", value = selectedNode.mass) {
-                    selectedNode.mass = it.coerceAtLeast(0.1f)
+                NumberField(label = "Gravity Scale", value = selectedNode.gravityScale) {
+                    selectedNode.gravityScale = it
                     onNodeUpdated(selectedNode)
                 }
-                NumberField(label = "Friction", value = selectedNode.friction) {
-                    selectedNode.friction = it.coerceIn(0f, 1f)
+                NumberField(label = "Mass (kg)", value = selectedNode.mass) {
+                    selectedNode.mass = it.coerceAtLeast(0.1f)
                     onNodeUpdated(selectedNode)
                 }
             }
@@ -241,19 +330,21 @@ fun InspectorDock(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // 4. SCRIPT & BEHAVIORS
-        InspectorSection(title = "Script & Behavior", icon = Icons.Default.Code) {
-            Text("Attached Behavior:", color = Color(0xFF94A3B8), fontSize = 12.sp)
+        // 4. BEHAVIOR & AI CONTROLLER
+        InspectorSection(title = "Behavior & Enemy AI", icon = Icons.Default.Psychology) {
+            Text("Active Behavior:", color = Color(0xFF94A3B8), fontSize = 12.sp)
 
             val behaviors = listOf(
                 BehaviorType.NONE,
                 BehaviorType.PLATFORMER_PLAYER,
                 BehaviorType.TOPDOWN_PLAYER,
-                BehaviorType.AUTO_PATROL,
-                BehaviorType.ORBIT_ROTATE,
+                BehaviorType.ENEMY_PATROL,
+                BehaviorType.ENEMY_CHASER,
+                BehaviorType.ENEMY_SHOOTER,
                 BehaviorType.COLLECTABLE_COIN,
+                BehaviorType.COLLECTABLE_GEM,
                 BehaviorType.HAZARD_SPIKE,
-                BehaviorType.FLAPPY_TAP
+                BehaviorType.VICTORY_FLAG
             )
 
             behaviors.forEach { b ->
@@ -270,7 +361,7 @@ fun InspectorDock(
                     border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) Color(0xFF38BDF8) else Color(0xFF334155))
                 ) {
                     Row(
-                        modifier = Modifier.padding(8.dp),
+                        modifier = Modifier.padding(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(selected = isSel, onClick = {
@@ -278,13 +369,15 @@ fun InspectorDock(
                             onNodeUpdated(selectedNode)
                         })
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(b.name, color = Color.White, fontSize = 12.sp)
+                        Text(b.name, color = Color.White, fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
                     }
                 }
             }
 
+            Spacer(modifier = Modifier.height(6.dp))
+
             if (selectedNode.behavior == BehaviorType.PLATFORMER_PLAYER || selectedNode.behavior == BehaviorType.TOPDOWN_PLAYER) {
-                NumberField(label = "Move Speed (px/s)", value = selectedNode.moveSpeed) {
+                NumberField(label = "Move Speed", value = selectedNode.moveSpeed) {
                     selectedNode.moveSpeed = it
                     onNodeUpdated(selectedNode)
                 }
@@ -292,15 +385,35 @@ fun InspectorDock(
                     selectedNode.jumpForce = it
                     onNodeUpdated(selectedNode)
                 }
-            } else if (selectedNode.behavior == BehaviorType.AUTO_PATROL) {
+            } else if (selectedNode.behavior == BehaviorType.ENEMY_PATROL) {
                 NumberField(label = "Patrol Distance", value = selectedNode.patrolDistance) {
                     selectedNode.patrolDistance = it
                     onNodeUpdated(selectedNode)
                 }
-                NumberField(label = "Patrol Speed", value = selectedNode.moveSpeed) {
+                NumberField(label = "Move Speed", value = selectedNode.moveSpeed) {
                     selectedNode.moveSpeed = it
                     onNodeUpdated(selectedNode)
                 }
+            } else if (selectedNode.behavior == BehaviorType.ENEMY_CHASER) {
+                NumberField(label = "Detection Range", value = selectedNode.detectionRange) {
+                    selectedNode.detectionRange = it
+                    onNodeUpdated(selectedNode)
+                }
+                NumberField(label = "Chase Speed", value = selectedNode.moveSpeed) {
+                    selectedNode.moveSpeed = it
+                    onNodeUpdated(selectedNode)
+                }
+            } else if (selectedNode.behavior == BehaviorType.ENEMY_SHOOTER) {
+                NumberField(label = "Shoot Interval (s)", value = selectedNode.shootInterval) {
+                    selectedNode.shootInterval = it.coerceAtLeast(0.5f)
+                    onNodeUpdated(selectedNode)
+                }
+            }
+
+            NumberField(label = "Health Points (HP)", value = selectedNode.health.toFloat()) {
+                selectedNode.health = it.toInt().coerceAtLeast(1)
+                selectedNode.maxHealth = selectedNode.health
+                onNodeUpdated(selectedNode)
             }
         }
     }

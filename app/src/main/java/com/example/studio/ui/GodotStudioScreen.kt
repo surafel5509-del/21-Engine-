@@ -2,7 +2,10 @@ package com.example.studio.ui
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -12,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -19,18 +23,20 @@ import com.example.engine.core.EngineConfig
 import com.example.engine.core.GameEngine
 import com.example.engine.core.GameSurfaceView
 import com.example.engine.viewport.ScaleMode
+import com.example.studio.engine_bridge.EditorToolMode
 import com.example.studio.engine_bridge.StudioRuntimeScene
 import com.example.studio.model.GameNode
 import com.example.studio.model.GameProject
 import com.example.studio.model.NodeType
+import com.example.studio.storage.CustomAssetManager
 import com.example.studio.storage.ProjectStorageManager
 
 enum class StudioDockTab {
     SCENE_TREE,
     INSPECTOR,
+    ASSETS,
     VISUAL_SCRIPT,
-    TEMPLATES,
-    ASSETS
+    TEMPLATES
 }
 
 @Composable
@@ -40,6 +46,12 @@ fun GodotStudioScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+
+    // Initialize custom asset manager
+    LaunchedEffect(Unit) {
+        CustomAssetManager.init(context)
+    }
+
     var project by remember { mutableStateOf(initialProject) }
     var selectedNode by remember { mutableStateOf(project.findNode(project.selectedNodeId)) }
     var activeDockTab by remember { mutableStateOf(StudioDockTab.SCENE_TREE) }
@@ -52,6 +64,9 @@ fun GodotStudioScreen(
             project = project,
             onNodeSelectedListener = { node ->
                 selectedNode = node
+                if (node != null) {
+                    project.selectedNodeId = node.id
+                }
             }
         )
     }
@@ -79,43 +94,40 @@ fun GodotStudioScreen(
 
     Scaffold(
         topBar = {
-            StudioTopAppBar(
-                project = project,
-                isPlayMode = isPlayMode,
-                onTogglePlayMode = {
-                    if (isPlayMode) {
-                        isPlayMode = false
-                        runtimeScene.enterEditorMode()
-                    } else {
+            if (!isPlayMode) {
+                StudioTopAppBar(
+                    project = project,
+                    isPlayMode = isPlayMode,
+                    onTogglePlayMode = {
                         isPlayMode = true
                         runtimeScene.enterPlayMode()
+                    },
+                    onResetPlay = {
+                        runtimeScene.resetPlayMode()
+                    },
+                    onSaveProject = {
+                        storageManager.saveActiveProject(project)
+                        Toast.makeText(context, "Game Project Saved!", Toast.LENGTH_SHORT).show()
+                    },
+                    onToggleGridSnap = {
+                        project = project.copy(gridSnap = !project.gridSnap)
+                        runtimeScene.project = project
                     }
-                },
-                onResetPlay = {
-                    runtimeScene.resetPlayMode()
-                },
-                onSaveProject = {
-                    storageManager.saveActiveProject(project)
-                    Toast.makeText(context, "Game Project Saved!", Toast.LENGTH_SHORT).show()
-                },
-                onToggleGridSnap = {
-                    project = project.copy(gridSnap = !project.gridSnap)
-                    runtimeScene.project = project
-                }
-            )
+                )
+            }
         },
         containerColor = Color(0xFF0B1120)
     ) { innerPadding ->
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(if (isPlayMode) PaddingValues(0.dp) else innerPadding)
         ) {
-            // VIEWPORT AREA (AndroidView with GameSurfaceView)
+            // VIEWPORT AREA
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(if (isPlayMode || !isDockExpanded) 1.0f else 0.55f)
+                    .weight(if (isPlayMode || !isDockExpanded) 1.0f else 0.52f)
                     .background(Color.Black)
             ) {
                 AndroidView(
@@ -127,9 +139,104 @@ fun GodotStudioScreen(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Floating Editor Controls (Only in Editor Mode)
+                // FULLSCREEN PLAY MODE OVERLAY
+                if (isPlayMode) {
+                    // Floating Exit / Pause Button
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { runtimeScene.resetPlayMode() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xCC334155)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Restart", fontSize = 12.sp, color = Color.White)
+                        }
+
+                        Button(
+                            onClick = {
+                                isPlayMode = false
+                                runtimeScene.enterEditorMode()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xDDDC2626)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("EXIT TO EDITOR", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+
+                // EDITOR TOOLS & FLOATING BAR
                 if (!isPlayMode) {
-                    // Zoom / Center Controls
+                    // Top Left Toolbar: Tools (Move, Brush)
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .background(Color(0xEE0F172A), shape = RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0xFF334155), shape = RoundedCornerShape(8.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Select / Move Tool
+                        IconButton(
+                            onClick = { runtimeScene.activeTool = EditorToolMode.SELECT_MOVE },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(
+                                    if (runtimeScene.activeTool == EditorToolMode.SELECT_MOVE) Color(0xFF0284C7) else Color.Transparent,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                        ) {
+                            Icon(Icons.Default.NearMe, contentDescription = "Select / Move", tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+
+                        // Brush / Quick Placement
+                        IconButton(
+                            onClick = { runtimeScene.activeTool = EditorToolMode.BRUSH_PLACE },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(
+                                    if (runtimeScene.activeTool == EditorToolMode.BRUSH_PLACE) Color(0xFF10B981) else Color.Transparent,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                        ) {
+                            Icon(Icons.Default.Brush, contentDescription = "Place Brush", tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+
+                        // Brush Presets
+                        if (runtimeScene.activeTool == EditorToolMode.BRUSH_PLACE) {
+                            listOf(
+                                Pair("platform", "Platform"),
+                                Pair("coin", "Coin"),
+                                Pair("slime", "Slime"),
+                                Pair("spike", "Spike")
+                            ).forEach { (key, label) ->
+                                val isChosen = runtimeScene.brushPreset == key
+                                AssistChip(
+                                    onClick = { runtimeScene.brushPreset = key },
+                                    label = { Text(label, fontSize = 10.sp) },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = if (isChosen) Color(0xFF047857) else Color(0xFF1E293B),
+                                        labelColor = Color.White
+                                    ),
+                                    modifier = Modifier.height(28.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Top Right Viewport Controls
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -170,34 +277,32 @@ fun GodotStudioScreen(
                             Icon(Icons.Default.CenterFocusStrong, contentDescription = "Reset View", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                     }
-                }
 
-                // Dock Expand/Collapse Button
-                if (!isPlayMode) {
+                    // Dock Expand / Collapse
                     IconButton(
                         onClick = { isDockExpanded = !isDockExpanded },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(8.dp)
-                            .size(32.dp)
-                            .background(Color(0xCC0284C7), shape = RoundedCornerShape(6.dp))
+                            .size(34.dp)
+                            .background(Color(0xEE0284C7), shape = CircleShape)
                     ) {
                         Icon(
                             if (isDockExpanded) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
                             contentDescription = "Toggle Dock",
                             tint = Color.White,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
             }
 
-            // GODOT STUDIO DOCK PANELS (Hierarchy, Inspector, Script, Templates, Assets)
+            // GODOT STUDIO DOCK PANELS
             if (!isPlayMode && isDockExpanded) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.45f)
+                        .weight(0.48f)
                         .background(Color(0xFF0F172A))
                 ) {
                     // Dock Tabs
@@ -210,32 +315,32 @@ fun GodotStudioScreen(
                         Tab(
                             selected = activeDockTab == StudioDockTab.SCENE_TREE,
                             onClick = { activeDockTab = StudioDockTab.SCENE_TREE },
-                            text = { Text("Hierarchy", fontSize = 11.sp) },
+                            text = { Text("Hierarchy", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.INSPECTOR,
                             onClick = { activeDockTab = StudioDockTab.INSPECTOR },
-                            text = { Text("Inspector", fontSize = 11.sp) },
+                            text = { Text("Inspector", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.ASSETS,
+                            onClick = { activeDockTab = StudioDockTab.ASSETS },
+                            text = { Text("Assets & FX", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.VISUAL_SCRIPT,
                             onClick = { activeDockTab = StudioDockTab.VISUAL_SCRIPT },
-                            text = { Text("Script", fontSize = 11.sp) },
+                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.TEMPLATES,
                             onClick = { activeDockTab = StudioDockTab.TEMPLATES },
-                            text = { Text("Templates", fontSize = 11.sp) },
+                            text = { Text("Templates", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Dashboard, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                        )
-                        Tab(
-                            selected = activeDockTab == StudioDockTab.ASSETS,
-                            onClick = { activeDockTab = StudioDockTab.ASSETS },
-                            text = { Text("Audio FX", fontSize = 11.sp) },
-                            icon = { Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                     }
 
@@ -290,6 +395,26 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
+                            StudioDockTab.ASSETS -> {
+                                AssetLibraryDock(
+                                    selectedNode = selectedNode,
+                                    onAssignAssetToNode = { customAsset ->
+                                        selectedNode?.let { node ->
+                                            node.customTextureKey = customAsset.id
+                                            if (customAsset.type == "spritesheet") {
+                                                node.isAnimated = true
+                                                node.animationCols = 4
+                                                node.animationRows = 1
+                                                node.animationFps = 8f
+                                            }
+                                            runtimeScene.project = project
+                                        }
+                                    },
+                                    onPlaySound = { soundKey ->
+                                        gameEngine.audioManager.playSynthSound(soundKey)
+                                    }
+                                )
+                            }
                             StudioDockTab.VISUAL_SCRIPT -> {
                                 VisualScriptDock(
                                     selectedNode = selectedNode,
@@ -308,13 +433,6 @@ fun GodotStudioScreen(
                                         storageManager.saveActiveProject(project)
                                         Toast.makeText(context, "Loaded ${templateProj.name}!", Toast.LENGTH_SHORT).show()
                                         activeDockTab = StudioDockTab.SCENE_TREE
-                                    }
-                                )
-                            }
-                            StudioDockTab.ASSETS -> {
-                                AssetLibraryDock(
-                                    onPlaySound = { soundKey ->
-                                        gameEngine.audioManager.playSynthSound(soundKey)
                                     }
                                 )
                             }
