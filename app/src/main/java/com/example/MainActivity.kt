@@ -3,64 +3,40 @@ package com.example
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.example.engine.core.EngineConfig
-import com.example.engine.core.GameEngine
-import com.example.engine.core.GameSurfaceView
-import com.example.engine.viewport.ScaleMode
-import com.example.game.scenes.PhysicsSandboxScene
+import com.example.studio.storage.ProjectStorageManager
+import com.example.studio.ui.GodotStudioScreen
+import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var gameEngine: GameEngine
-    private lateinit var gameSurfaceView: GameSurfaceView
+    private lateinit var storageManager: ProjectStorageManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. Configure Game Engine
-        val config = EngineConfig(
-            logicalWidth = 1280f,
-            logicalHeight = 720f,
-            targetFps = 60,
-            scaleMode = ScaleMode.FIT_LETTERBOX,
-            isDebugMode = true,
-            showFps = true,
-            showSafeAreas = false
-        )
+        storageManager = ProjectStorageManager(this)
+        val initialProject = storageManager.loadActiveProject()
 
-        // 2. Instantiate GameEngine & GameSurfaceView
-        gameEngine = GameEngine(this, config)
-        gameSurfaceView = GameSurfaceView(this)
-        gameEngine.attachView(gameSurfaceView)
+        setContent {
+            MyApplicationTheme(darkTheme = true) {
+                GodotStudioScreen(
+                    initialProject = initialProject,
+                    storageManager = storageManager
+                )
+            }
+        }
 
-        // 3. Set Initial Scene (Physics Sandbox)
-        gameEngine.setScene(PhysicsSandboxScene())
-
-        // 4. Set Content View
-        setContentView(gameSurfaceView)
-
-        // 5. Enable immersive full-screen display after view hierarchy is initialized
+        // Enable full-screen immersive display
         hideSystemUI()
     }
 
     override fun onResume() {
         super.onResume()
         hideSystemUI()
-        gameEngine.resume()
-        gameEngine.start()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        gameEngine.pause()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        gameEngine.destroy()
     }
 
     private fun hideSystemUI() {
@@ -72,3 +48,4 @@ class MainActivity : ComponentActivity() {
         controller.hide(WindowInsetsCompat.Type.systemBars())
     }
 }
+

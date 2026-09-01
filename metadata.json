@@ -1,6 +1,6 @@
 {
   "name": "Game Engine",
-  "description": "A reusable, modular 2D game engine for Android with Canvas/SurfaceView rendering, scene system, physics, responsive viewports, and interactive demo testbed.",
+  "description": "A complete Godot-style 2D game maker and engine studio for Android with visual scene hierarchy, level editor, physics, inspector, visual scripting, templates, and instant live play testing.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
