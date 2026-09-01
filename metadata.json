@@ -1,0 +1,6 @@
+{
+  "name": "Game Engine",
+  "description": "A reusable, modular 2D game engine for Android with Canvas/SurfaceView rendering, scene system, physics, responsive viewports, and interactive demo testbed.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
