@@ -23,6 +23,7 @@ import com.example.engine.core.EngineConfig
 import com.example.engine.core.GameEngine
 import com.example.engine.core.GameSurfaceView
 import com.example.engine.viewport.ScaleMode
+import com.example.studio.ai.AiAssistantDock
 import com.example.studio.engine_bridge.EditorToolMode
 import com.example.studio.engine_bridge.StudioRuntimeScene
 import com.example.studio.model.GameNode
@@ -36,6 +37,10 @@ enum class StudioDockTab {
     INSPECTOR,
     ASSETS,
     VISUAL_SCRIPT,
+    SCRIPT_EDITOR,
+    TILEMAP,
+    AI_AGENT,
+    DEBUG_CONSOLE,
     TEMPLATES
 }
 
@@ -57,6 +62,7 @@ fun GodotStudioScreen(
     var activeDockTab by remember { mutableStateOf(StudioDockTab.SCENE_TREE) }
     var isPlayMode by remember { mutableStateOf(false) }
     var isDockExpanded by remember { mutableStateOf(true) }
+    var showApkExportDialog by remember { mutableStateOf(false) }
 
     // Game Engine & Scene Instance
     val runtimeScene = remember {
@@ -112,6 +118,9 @@ fun GodotStudioScreen(
                     onToggleGridSnap = {
                         project = project.copy(gridSnap = !project.gridSnap)
                         runtimeScene.project = project
+                    },
+                    onExportApk = {
+                        showApkExportDialog = true
                     }
                 )
             }
@@ -305,11 +314,12 @@ fun GodotStudioScreen(
                         .weight(0.48f)
                         .background(Color(0xFF0F172A))
                 ) {
-                    // Dock Tabs
-                    TabRow(
+                    // Scrollable Dock Tabs
+                    ScrollableTabRow(
                         selectedTabIndex = activeDockTab.ordinal,
                         containerColor = Color(0xFF1E293B),
                         contentColor = Color(0xFF38BDF8),
+                        edgePadding = 8.dp,
                         divider = {}
                     ) {
                         Tab(
@@ -325,16 +335,40 @@ fun GodotStudioScreen(
                             icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
-                            selected = activeDockTab == StudioDockTab.ASSETS,
-                            onClick = { activeDockTab = StudioDockTab.ASSETS },
-                            text = { Text("Assets & FX", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                            selected = activeDockTab == StudioDockTab.AI_AGENT,
+                            onClick = { activeDockTab = StudioDockTab.AI_AGENT },
+                            text = { Text("AI Assistant", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.SCRIPT_EDITOR,
+                            onClick = { activeDockTab = StudioDockTab.SCRIPT_EDITOR },
+                            text = { Text("Script Code", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.VISUAL_SCRIPT,
                             onClick = { activeDockTab = StudioDockTab.VISUAL_SCRIPT },
-                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            text = { Text("Visual Logic", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.TILEMAP,
+                            onClick = { activeDockTab = StudioDockTab.TILEMAP },
+                            text = { Text("TileMap", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.GridOn, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.ASSETS,
+                            onClick = { activeDockTab = StudioDockTab.ASSETS },
+                            text = { Text("Assets", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.DEBUG_CONSOLE,
+                            onClick = { activeDockTab = StudioDockTab.DEBUG_CONSOLE },
+                            text = { Text("Console", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.TEMPLATES,
@@ -362,7 +396,7 @@ fun GodotStudioScreen(
                                             nodeType = nodeType,
                                             posX = runtimeScene.editorCamera.position.x,
                                             posY = runtimeScene.editorCamera.position.y,
-                                            hasPhysics = (nodeType == NodeType.RIGID_BODY_2D || nodeType == NodeType.STATIC_BODY_2D),
+                                            hasPhysics = (nodeType == NodeType.RIGID_BODY_2D || nodeType == NodeType.STATIC_BODY_2D || nodeType == NodeType.CHARACTER_BODY_2D),
                                             bodyType = if (nodeType == NodeType.STATIC_BODY_2D) "STATIC" else "DYNAMIC",
                                             isParticleEmitter = (nodeType == NodeType.CPU_PARTICLES_2D)
                                         )
@@ -395,6 +429,43 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
+                            StudioDockTab.AI_AGENT -> {
+                                AiAssistantDock(
+                                    project = project,
+                                    onProjectUpdated = { updatedProject ->
+                                        project = updatedProject
+                                        runtimeScene.project = updatedProject
+                                        selectedNode = project.findNode(project.selectedNodeId)
+                                    }
+                                )
+                            }
+                            StudioDockTab.SCRIPT_EDITOR -> {
+                                ScriptEditorDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
+                            StudioDockTab.VISUAL_SCRIPT -> {
+                                VisualScriptDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
+                            StudioDockTab.TILEMAP -> {
+                                TileMapDock(
+                                    project = project,
+                                    onProjectUpdated = { updatedProj ->
+                                        project = updatedProj
+                                        runtimeScene.project = updatedProj
+                                    }
+                                )
+                            }
                             StudioDockTab.ASSETS -> {
                                 AssetLibraryDock(
                                     selectedNode = selectedNode,
@@ -415,14 +486,8 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
-                            StudioDockTab.VISUAL_SCRIPT -> {
-                                VisualScriptDock(
-                                    selectedNode = selectedNode,
-                                    onNodeUpdated = { updatedNode ->
-                                        selectedNode = updatedNode
-                                        runtimeScene.project = project
-                                    }
-                                )
+                            StudioDockTab.DEBUG_CONSOLE -> {
+                                DebugConsoleDock()
                             }
                             StudioDockTab.TEMPLATES -> {
                                 TemplatesDock(
@@ -441,5 +506,12 @@ fun GodotStudioScreen(
                 }
             }
         }
+    }
+
+    if (showApkExportDialog) {
+        ApkExportDialog(
+            project = project,
+            onDismiss = { showApkExportDialog = false }
+        )
     }
 }
