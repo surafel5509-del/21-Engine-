@@ -34,8 +34,11 @@ import com.example.studio.storage.ProjectStorageManager
 enum class StudioDockTab {
     SCENE_TREE,
     INSPECTOR,
+    CODE_EDITOR,
     ASSETS,
     VISUAL_SCRIPT,
+    AI_ASSISTANT,
+    DEBUG_CONSOLE,
     TEMPLATES
 }
 
@@ -57,6 +60,7 @@ fun GodotStudioScreen(
     var activeDockTab by remember { mutableStateOf(StudioDockTab.SCENE_TREE) }
     var isPlayMode by remember { mutableStateOf(false) }
     var isDockExpanded by remember { mutableStateOf(true) }
+    var showExportDialog by remember { mutableStateOf(false) }
 
     // Game Engine & Scene Instance
     val runtimeScene = remember {
@@ -95,25 +99,34 @@ fun GodotStudioScreen(
     Scaffold(
         topBar = {
             if (!isPlayMode) {
-                StudioTopAppBar(
-                    project = project,
-                    isPlayMode = isPlayMode,
-                    onTogglePlayMode = {
-                        isPlayMode = true
-                        runtimeScene.enterPlayMode()
-                    },
-                    onResetPlay = {
-                        runtimeScene.resetPlayMode()
-                    },
-                    onSaveProject = {
-                        storageManager.saveActiveProject(project)
-                        Toast.makeText(context, "Game Project Saved!", Toast.LENGTH_SHORT).show()
-                    },
-                    onToggleGridSnap = {
-                        project = project.copy(gridSnap = !project.gridSnap)
-                        runtimeScene.project = project
-                    }
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0F172A))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StudioTopAppBar(
+                        project = project,
+                        isPlayMode = isPlayMode,
+                        onTogglePlayMode = {
+                            isPlayMode = true
+                            runtimeScene.enterPlayMode()
+                        },
+                        onResetPlay = {
+                            runtimeScene.resetPlayMode()
+                        },
+                        onSaveProject = {
+                            storageManager.saveActiveProject(project)
+                            Toast.makeText(context, "Game Project Saved!", Toast.LENGTH_SHORT).show()
+                        },
+                        onToggleGridSnap = {
+                            project = project.copy(gridSnap = !project.gridSnap)
+                            runtimeScene.project = project
+                        }
+                    )
+                }
             }
         },
         containerColor = Color(0xFF0B1120)
@@ -177,7 +190,7 @@ fun GodotStudioScreen(
 
                 // EDITOR TOOLS & FLOATING BAR
                 if (!isPlayMode) {
-                    // Top Left Toolbar: Tools (Move, Brush)
+                    // Top Left Toolbar: Tools (Move, Brush, Export APK)
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -212,6 +225,16 @@ fun GodotStudioScreen(
                                 )
                         ) {
                             Icon(Icons.Default.Brush, contentDescription = "Place Brush", tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+
+                        // Export APK
+                        IconButton(
+                            onClick = { showExportDialog = true },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color(0xFF16A34A), shape = RoundedCornerShape(6.dp))
+                        ) {
+                            Icon(Icons.Default.Android, contentDescription = "Export APK", tint = Color.White, modifier = Modifier.size(16.dp))
                         }
 
                         // Brush Presets
@@ -306,10 +329,11 @@ fun GodotStudioScreen(
                         .background(Color(0xFF0F172A))
                 ) {
                     // Dock Tabs
-                    TabRow(
+                    ScrollableTabRow(
                         selectedTabIndex = activeDockTab.ordinal,
                         containerColor = Color(0xFF1E293B),
                         contentColor = Color(0xFF38BDF8),
+                        edgePadding = 8.dp,
                         divider = {}
                     ) {
                         Tab(
@@ -325,16 +349,34 @@ fun GodotStudioScreen(
                             icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
+                            selected = activeDockTab == StudioDockTab.CODE_EDITOR,
+                            onClick = { activeDockTab = StudioDockTab.CODE_EDITOR },
+                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.AI_ASSISTANT,
+                            onClick = { activeDockTab = StudioDockTab.AI_ASSISTANT },
+                            text = { Text("AI Assistant", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
                             selected = activeDockTab == StudioDockTab.ASSETS,
                             onClick = { activeDockTab = StudioDockTab.ASSETS },
-                            text = { Text("Assets & FX", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            text = { Text("Assets", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.VISUAL_SCRIPT,
                             onClick = { activeDockTab = StudioDockTab.VISUAL_SCRIPT },
-                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            text = { Text("Visual Nodes", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.DEBUG_CONSOLE,
+                            onClick = { activeDockTab = StudioDockTab.DEBUG_CONSOLE },
+                            text = { Text("Console", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.TEMPLATES,
@@ -395,6 +437,24 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
+                            StudioDockTab.CODE_EDITOR -> {
+                                CodeEditorDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
+                            StudioDockTab.AI_ASSISTANT -> {
+                                AiAssistantDock(
+                                    project = project,
+                                    onProjectUpdated = { updatedProject ->
+                                        project = updatedProject
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
                             StudioDockTab.ASSETS -> {
                                 AssetLibraryDock(
                                     selectedNode = selectedNode,
@@ -424,6 +484,9 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
+                            StudioDockTab.DEBUG_CONSOLE -> {
+                                DebugConsoleDock()
+                            }
                             StudioDockTab.TEMPLATES -> {
                                 TemplatesDock(
                                     onLoadTemplate = { templateProj ->
@@ -441,5 +504,12 @@ fun GodotStudioScreen(
                 }
             }
         }
+    }
+
+    if (showExportDialog) {
+        ExportApkDialog(
+            project = project,
+            onDismiss = { showExportDialog = false }
+        )
     }
 }
