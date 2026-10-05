@@ -23,6 +23,7 @@ fun StudioTopAppBar(
     onResetPlay: () -> Unit,
     onSaveProject: () -> Unit,
     onToggleGridSnap: () -> Unit,
+    onExportApk: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -105,6 +106,19 @@ fun StudioTopAppBar(
                         Icons.Default.Save,
                         contentDescription = "Save Project",
                         tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Export APK Button
+                IconButton(
+                    onClick = onExportApk,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Android,
+                        contentDescription = "Export APK",
+                        tint = Color(0xFF10B981),
                         modifier = Modifier.size(18.dp)
                     )
                 }
