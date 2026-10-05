@@ -36,6 +36,9 @@ enum class StudioDockTab {
     INSPECTOR,
     ASSETS,
     VISUAL_SCRIPT,
+    CODE_EDITOR,
+    AI_AGENT,
+    DEBUG_CONSOLE,
     TEMPLATES
 }
 
@@ -57,6 +60,7 @@ fun GodotStudioScreen(
     var activeDockTab by remember { mutableStateOf(StudioDockTab.SCENE_TREE) }
     var isPlayMode by remember { mutableStateOf(false) }
     var isDockExpanded by remember { mutableStateOf(true) }
+    var showApkExportModal by remember { mutableStateOf(false) }
 
     // Game Engine & Scene Instance
     val runtimeScene = remember {
@@ -112,6 +116,9 @@ fun GodotStudioScreen(
                     onToggleGridSnap = {
                         project = project.copy(gridSnap = !project.gridSnap)
                         runtimeScene.project = project
+                    },
+                    onExportApk = {
+                        showApkExportModal = true
                     }
                 )
             }
@@ -305,11 +312,12 @@ fun GodotStudioScreen(
                         .weight(0.48f)
                         .background(Color(0xFF0F172A))
                 ) {
-                    // Dock Tabs
-                    TabRow(
+                    // Scrollable Dock Tabs
+                    ScrollableTabRow(
                         selectedTabIndex = activeDockTab.ordinal,
                         containerColor = Color(0xFF1E293B),
                         contentColor = Color(0xFF38BDF8),
+                        edgePadding = 8.dp,
                         divider = {}
                     ) {
                         Tab(
@@ -327,14 +335,32 @@ fun GodotStudioScreen(
                         Tab(
                             selected = activeDockTab == StudioDockTab.ASSETS,
                             onClick = { activeDockTab = StudioDockTab.ASSETS },
-                            text = { Text("Assets & FX", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            text = { Text("Assets", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.VISUAL_SCRIPT,
                             onClick = { activeDockTab = StudioDockTab.VISUAL_SCRIPT },
-                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            text = { Text("Visual Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.CODE_EDITOR,
+                            onClick = { activeDockTab = StudioDockTab.CODE_EDITOR },
+                            text = { Text("Code", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.AI_AGENT,
+                            onClick = { activeDockTab = StudioDockTab.AI_AGENT },
+                            text = { Text("AI Agent", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFA855F7), modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.DEBUG_CONSOLE,
+                            onClick = { activeDockTab = StudioDockTab.DEBUG_CONSOLE },
+                            text = { Text("Console", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Terminal, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.TEMPLATES,
@@ -424,6 +450,36 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
+                            StudioDockTab.CODE_EDITOR -> {
+                                CodeEditorDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    },
+                                    onAiFixRequest = { prompt ->
+                                        activeDockTab = StudioDockTab.AI_AGENT
+                                    }
+                                )
+                            }
+                            StudioDockTab.AI_AGENT -> {
+                                AiAssistantDock(
+                                    project = project,
+                                    onProjectUpdated = { updatedProj ->
+                                        project = updatedProj
+                                        runtimeScene.project = project
+                                        selectedNode = project.findNode(project.selectedNodeId)
+                                    }
+                                )
+                            }
+                            StudioDockTab.DEBUG_CONSOLE -> {
+                                DebugConsoleDock(
+                                    project = project,
+                                    onExplainErrorWithAi = { errorPrompt ->
+                                        activeDockTab = StudioDockTab.AI_AGENT
+                                    }
+                                )
+                            }
                             StudioDockTab.TEMPLATES -> {
                                 TemplatesDock(
                                     onLoadTemplate = { templateProj ->
@@ -441,5 +497,13 @@ fun GodotStudioScreen(
                 }
             }
         }
+    }
+
+    // APK EXPORT MODAL DIALOG
+    if (showApkExportModal) {
+        ApkExportModal(
+            project = project,
+            onDismiss = { showApkExportModal = false }
+        )
     }
 }
