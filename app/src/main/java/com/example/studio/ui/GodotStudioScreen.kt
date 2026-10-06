@@ -31,11 +31,14 @@ import com.example.studio.model.NodeType
 import com.example.studio.storage.CustomAssetManager
 import com.example.studio.storage.ProjectStorageManager
 
+import com.example.studio.ai.EngineAiAssistant
+
 enum class StudioDockTab {
     SCENE_TREE,
     INSPECTOR,
     ASSETS,
     VISUAL_SCRIPT,
+    AI_ASSISTANT,
     TEMPLATES
 }
 
@@ -57,6 +60,8 @@ fun GodotStudioScreen(
     var activeDockTab by remember { mutableStateOf(StudioDockTab.SCENE_TREE) }
     var isPlayMode by remember { mutableStateOf(false) }
     var isDockExpanded by remember { mutableStateOf(true) }
+
+    val aiAssistant = remember { EngineAiAssistant() }
 
     // Game Engine & Scene Instance
     val runtimeScene = remember {
@@ -337,6 +342,12 @@ fun GodotStudioScreen(
                             icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
+                            selected = activeDockTab == StudioDockTab.AI_ASSISTANT,
+                            onClick = { activeDockTab = StudioDockTab.AI_ASSISTANT },
+                            text = { Text("AI Assistant", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
                             selected = activeDockTab == StudioDockTab.TEMPLATES,
                             onClick = { activeDockTab = StudioDockTab.TEMPLATES },
                             text = { Text("Templates", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
@@ -420,6 +431,21 @@ fun GodotStudioScreen(
                                     selectedNode = selectedNode,
                                     onNodeUpdated = { updatedNode ->
                                         selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
+                            StudioDockTab.AI_ASSISTANT -> {
+                                AiAssistantDock(
+                                    assistant = aiAssistant,
+                                    project = project,
+                                    selectedNode = selectedNode,
+                                    onProjectUpdated = { updatedProject, updatedNode ->
+                                        project = updatedProject
+                                        selectedNode = updatedNode
+                                        if (updatedNode != null) {
+                                            project.selectedNodeId = updatedNode.id
+                                        }
                                         runtimeScene.project = project
                                     }
                                 )
