@@ -3,7 +3,6 @@ package com.example.studio.ui
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,8 +22,11 @@ import com.example.engine.core.EngineConfig
 import com.example.engine.core.GameEngine
 import com.example.engine.core.GameSurfaceView
 import com.example.engine.viewport.ScaleMode
+import com.example.studio.ai.AiAgent
+import com.example.studio.ai.AiDock
 import com.example.studio.engine_bridge.EditorToolMode
 import com.example.studio.engine_bridge.StudioRuntimeScene
+import com.example.studio.export.ExportApkModal
 import com.example.studio.model.GameNode
 import com.example.studio.model.GameProject
 import com.example.studio.model.NodeType
@@ -34,8 +36,11 @@ import com.example.studio.storage.ProjectStorageManager
 enum class StudioDockTab {
     SCENE_TREE,
     INSPECTOR,
-    ASSETS,
+    CODE_SCRIPT,
     VISUAL_SCRIPT,
+    ASSETS,
+    AI_COPILOT,
+    DEBUG_CONSOLE,
     TEMPLATES
 }
 
@@ -57,6 +62,10 @@ fun GodotStudioScreen(
     var activeDockTab by remember { mutableStateOf(StudioDockTab.SCENE_TREE) }
     var isPlayMode by remember { mutableStateOf(false) }
     var isDockExpanded by remember { mutableStateOf(true) }
+    var showExportModal by remember { mutableStateOf(false) }
+    var activeErrorForAi by remember { mutableStateOf("") }
+
+    val aiAgent = remember { AiAgent() }
 
     // Game Engine & Scene Instance
     val runtimeScene = remember {
@@ -112,6 +121,9 @@ fun GodotStudioScreen(
                     onToggleGridSnap = {
                         project = project.copy(gridSnap = !project.gridSnap)
                         runtimeScene.project = project
+                    },
+                    onExportApk = {
+                        showExportModal = true
                     }
                 )
             }
@@ -306,10 +318,11 @@ fun GodotStudioScreen(
                         .background(Color(0xFF0F172A))
                 ) {
                     // Dock Tabs
-                    TabRow(
+                    ScrollableTabRow(
                         selectedTabIndex = activeDockTab.ordinal,
                         containerColor = Color(0xFF1E293B),
                         contentColor = Color(0xFF38BDF8),
+                        edgePadding = 8.dp,
                         divider = {}
                     ) {
                         Tab(
@@ -325,16 +338,34 @@ fun GodotStudioScreen(
                             icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
+                            selected = activeDockTab == StudioDockTab.CODE_SCRIPT,
+                            onClick = { activeDockTab = StudioDockTab.CODE_SCRIPT },
+                            text = { Text("Code.gd", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.VISUAL_SCRIPT,
+                            onClick = { activeDockTab = StudioDockTab.VISUAL_SCRIPT },
+                            text = { Text("Visual Logic", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
                             selected = activeDockTab == StudioDockTab.ASSETS,
                             onClick = { activeDockTab = StudioDockTab.ASSETS },
                             text = { Text("Assets & FX", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
-                            selected = activeDockTab == StudioDockTab.VISUAL_SCRIPT,
-                            onClick = { activeDockTab = StudioDockTab.VISUAL_SCRIPT },
-                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                            selected = activeDockTab == StudioDockTab.AI_COPILOT,
+                            onClick = { activeDockTab = StudioDockTab.AI_COPILOT },
+                            text = { Text("AI Copilot", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.DEBUG_CONSOLE,
+                            onClick = { activeDockTab = StudioDockTab.DEBUG_CONSOLE },
+                            text = { Text("Console", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.TEMPLATES,
@@ -395,6 +426,24 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
+                            StudioDockTab.CODE_SCRIPT -> {
+                                CodeScriptDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
+                            StudioDockTab.VISUAL_SCRIPT -> {
+                                VisualScriptDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
                             StudioDockTab.ASSETS -> {
                                 AssetLibraryDock(
                                     selectedNode = selectedNode,
@@ -415,12 +464,23 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
-                            StudioDockTab.VISUAL_SCRIPT -> {
-                                VisualScriptDock(
-                                    selectedNode = selectedNode,
-                                    onNodeUpdated = { updatedNode ->
-                                        selectedNode = updatedNode
+                            StudioDockTab.AI_COPILOT -> {
+                                AiDock(
+                                    project = project,
+                                    aiAgent = aiAgent,
+                                    lastErrorLog = activeErrorForAi,
+                                    onProjectUpdated = {
                                         runtimeScene.project = project
+                                        selectedNode = project.findNode(project.selectedNodeId)
+                                    }
+                                )
+                            }
+                            StudioDockTab.DEBUG_CONSOLE -> {
+                                DebugConsoleDock(
+                                    project = project,
+                                    onAskAiToFix = { errLog ->
+                                        activeErrorForAi = errLog
+                                        activeDockTab = StudioDockTab.AI_COPILOT
                                     }
                                 )
                             }
@@ -441,5 +501,13 @@ fun GodotStudioScreen(
                 }
             }
         }
+    }
+
+    // Modal Export APK Dialog
+    if (showExportModal) {
+        ExportApkModal(
+            project = project,
+            onDismiss = { showExportModal = false }
+        )
     }
 }

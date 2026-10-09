@@ -23,6 +23,7 @@ fun StudioTopAppBar(
     onResetPlay: () -> Unit,
     onSaveProject: () -> Unit,
     onToggleGridSnap: () -> Unit,
+    onExportApk: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -71,9 +72,9 @@ fun StudioTopAppBar(
                 }
             }
 
-            // Central Control / Play & Stop Buttons
+            // Central Control / Play, Export & Stop Buttons
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Grid Snap Toggle (In Editor)
@@ -92,6 +93,19 @@ fun StudioTopAppBar(
                             contentDescription = "Toggle Grid Snap",
                             tint = if (project.gridSnap) Color(0xFF38BDF8) else Color(0xFF64748B),
                             modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Export APK Button
+                    IconButton(
+                        onClick = onExportApk,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Android,
+                            contentDescription = "Export APK",
+                            tint = Color(0xFF22C55E),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
