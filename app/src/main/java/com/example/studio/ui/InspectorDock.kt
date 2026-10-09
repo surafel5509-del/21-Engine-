@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.example.studio.model.BehaviorType
 import com.example.studio.model.ColliderShapeType
 import com.example.studio.model.GameNode
+import com.example.studio.model.NodeType
 import com.example.studio.storage.CustomAssetManager
 
 @Composable
@@ -100,6 +101,52 @@ fun InspectorDock(
         }
 
         Spacer(modifier = Modifier.height(10.dp))
+
+        // TILEMAP SPECIFIC SECTION
+        if (selectedNode.nodeType == NodeType.TILE_MAP_2D) {
+            InspectorSection(title = "Tilemap Grid & Palette", icon = Icons.Default.GridOn) {
+                NumberField(label = "Tile Size (px)", value = selectedNode.tileSize.toFloat()) {
+                    selectedNode.tileSize = it.toInt().coerceIn(16, 128)
+                    onNodeUpdated(selectedNode)
+                }
+                NumberField(label = "Grid Columns", value = selectedNode.tileCols.toFloat()) {
+                    selectedNode.tileCols = it.toInt().coerceIn(1, 100)
+                    onNodeUpdated(selectedNode)
+                }
+                NumberField(label = "Grid Rows", value = selectedNode.tileRows.toFloat()) {
+                    selectedNode.tileRows = it.toInt().coerceIn(1, 100)
+                    onNodeUpdated(selectedNode)
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Tile Brush Palette:", color = Color(0xFF94A3B8), fontSize = 12.sp)
+
+                val tiles = listOf("grass", "brick", "stone", "water", "dirt", "metal")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    tiles.forEach { tileName ->
+                        Button(
+                            onClick = {
+                                // Fill central tile grid sample
+                                selectedNode.tileDataMap["0,0"] = tileName
+                                selectedNode.tileDataMap["1,0"] = tileName
+                                selectedNode.tileDataMap["2,0"] = tileName
+                                onNodeUpdated(selectedNode)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text(tileName.capitalize(), fontSize = 10.sp, color = Color(0xFF38BDF8))
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
 
         // 2. SPRITE & TEXTURE & ANIMATION SECTION
         InspectorSection(title = "Sprite, Texture & Animation", icon = Icons.Default.Palette) {

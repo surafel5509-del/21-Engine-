@@ -7,6 +7,7 @@ enum class NodeType {
     CHARACTER_BODY_2D,
     SPRITE_2D,
     ANIMATED_SPRITE_2D,
+    TILE_MAP_2D,
     RIGID_BODY_2D,
     STATIC_BODY_2D,
     AREA_2D,
@@ -15,7 +16,8 @@ enum class NodeType {
     PARALLAX_BACKGROUND_2D,
     CANVAS_LAYER_UI,
     LABEL_2D,
-    SPAWNER_2D
+    SPAWNER_2D,
+    PREFAB_2D
 }
 
 enum class BehaviorType {
@@ -81,6 +83,12 @@ data class GameNode(
     var flipX: Boolean = false,
     var flipY: Boolean = false,
 
+    // Tilemap System
+    var tileSize: Int = 32,
+    var tileCols: Int = 10,
+    var tileRows: Int = 6,
+    var tileDataMap: MutableMap<String, String> = mutableMapOf(), // "x,y" -> tileType
+
     // Sprite Frame Animation
     var isAnimated: Boolean = false,
     var animationFps: Float = 8f,
@@ -138,6 +146,9 @@ data class GameNode(
     // Parallax
     var isParallax: Boolean = false,
     var parallaxFactor: Float = 0.5f,
+
+    // Script Text Code
+    var scriptCode: String = "",
     
     // Visual Script Rules
     val customRules: MutableList<VisualScriptRule> = mutableListOf()
@@ -147,6 +158,7 @@ data class GameNode(
             id = UUID.randomUUID().toString(),
             name = "${name}_Copy",
             childrenIds = mutableListOf(),
+            tileDataMap = HashMap(tileDataMap),
             customRules = customRules.map { it.copy(id = UUID.randomUUID().toString()) }.toMutableList()
         )
     }
