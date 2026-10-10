@@ -34,9 +34,14 @@ import com.example.studio.storage.ProjectStorageManager
 enum class StudioDockTab {
     SCENE_TREE,
     INSPECTOR,
-    ASSETS,
+    CODE_EDITOR,
+    TILEMAP,
     VISUAL_SCRIPT,
-    TEMPLATES
+    ASSETS,
+    DEBUG_CONSOLE,
+    TEMPLATES,
+    AI_COPILOT,
+    PROJECT_EXPORT
 }
 
 @Composable
@@ -141,7 +146,6 @@ fun GodotStudioScreen(
 
                 // FULLSCREEN PLAY MODE OVERLAY
                 if (isPlayMode) {
-                    // Floating Exit / Pause Button
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -177,7 +181,6 @@ fun GodotStudioScreen(
 
                 // EDITOR TOOLS & FLOATING BAR
                 if (!isPlayMode) {
-                    // Top Left Toolbar: Tools (Move, Brush)
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -188,7 +191,6 @@ fun GodotStudioScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Select / Move Tool
                         IconButton(
                             onClick = { runtimeScene.activeTool = EditorToolMode.SELECT_MOVE },
                             modifier = Modifier
@@ -201,7 +203,6 @@ fun GodotStudioScreen(
                             Icon(Icons.Default.NearMe, contentDescription = "Select / Move", tint = Color.White, modifier = Modifier.size(16.dp))
                         }
 
-                        // Brush / Quick Placement
                         IconButton(
                             onClick = { runtimeScene.activeTool = EditorToolMode.BRUSH_PLACE },
                             modifier = Modifier
@@ -214,7 +215,6 @@ fun GodotStudioScreen(
                             Icon(Icons.Default.Brush, contentDescription = "Place Brush", tint = Color.White, modifier = Modifier.size(16.dp))
                         }
 
-                        // Brush Presets
                         if (runtimeScene.activeTool == EditorToolMode.BRUSH_PLACE) {
                             listOf(
                                 Pair("platform", "Platform"),
@@ -236,7 +236,6 @@ fun GodotStudioScreen(
                         }
                     }
 
-                    // Top Right Viewport Controls
                     Row(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -244,23 +243,15 @@ fun GodotStudioScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         IconButton(
-                            onClick = {
-                                runtimeScene.editorCamera.zoom = (runtimeScene.editorCamera.zoom * 1.25f).coerceAtMost(3.0f)
-                            },
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(Color(0xCC0F172A), shape = RoundedCornerShape(6.dp))
+                            onClick = { runtimeScene.editorCamera.zoom = (runtimeScene.editorCamera.zoom * 1.25f).coerceAtMost(3.0f) },
+                            modifier = Modifier.size(32.dp).background(Color(0xCC0F172A), shape = RoundedCornerShape(6.dp))
                         ) {
                             Icon(Icons.Default.ZoomIn, contentDescription = "Zoom In", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
 
                         IconButton(
-                            onClick = {
-                                runtimeScene.editorCamera.zoom = (runtimeScene.editorCamera.zoom / 1.25f).coerceAtLeast(0.4f)
-                            },
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(Color(0xCC0F172A), shape = RoundedCornerShape(6.dp))
+                            onClick = { runtimeScene.editorCamera.zoom = (runtimeScene.editorCamera.zoom / 1.25f).coerceAtLeast(0.4f) },
+                            modifier = Modifier.size(32.dp).background(Color(0xCC0F172A), shape = RoundedCornerShape(6.dp))
                         ) {
                             Icon(Icons.Default.ZoomOut, contentDescription = "Zoom Out", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
@@ -270,15 +261,12 @@ fun GodotStudioScreen(
                                 runtimeScene.editorCamera.position.set(640f, 360f)
                                 runtimeScene.editorCamera.zoom = 1.0f
                             },
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(Color(0xCC0F172A), shape = RoundedCornerShape(6.dp))
+                            modifier = Modifier.size(32.dp).background(Color(0xCC0F172A), shape = RoundedCornerShape(6.dp))
                         ) {
                             Icon(Icons.Default.CenterFocusStrong, contentDescription = "Reset View", tint = Color.White, modifier = Modifier.size(18.dp))
                         }
                     }
 
-                    // Dock Expand / Collapse
                     IconButton(
                         onClick = { isDockExpanded = !isDockExpanded },
                         modifier = Modifier
@@ -305,11 +293,11 @@ fun GodotStudioScreen(
                         .weight(0.48f)
                         .background(Color(0xFF0F172A))
                 ) {
-                    // Dock Tabs
-                    TabRow(
+                    ScrollableTabRow(
                         selectedTabIndex = activeDockTab.ordinal,
                         containerColor = Color(0xFF1E293B),
                         contentColor = Color(0xFF38BDF8),
+                        edgePadding = 8.dp,
                         divider = {}
                     ) {
                         Tab(
@@ -325,16 +313,40 @@ fun GodotStudioScreen(
                             icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
-                            selected = activeDockTab == StudioDockTab.ASSETS,
-                            onClick = { activeDockTab = StudioDockTab.ASSETS },
-                            text = { Text("Assets & FX", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                            selected = activeDockTab == StudioDockTab.CODE_EDITOR,
+                            onClick = { activeDockTab = StudioDockTab.CODE_EDITOR },
+                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.TILEMAP,
+                            onClick = { activeDockTab = StudioDockTab.TILEMAP },
+                            text = { Text("Tilemap", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.GridOn, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.VISUAL_SCRIPT,
                             onClick = { activeDockTab = StudioDockTab.VISUAL_SCRIPT },
-                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            text = { Text("Rules", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.ASSETS,
+                            onClick = { activeDockTab = StudioDockTab.ASSETS },
+                            text = { Text("Assets", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.DEBUG_CONSOLE,
+                            onClick = { activeDockTab = StudioDockTab.DEBUG_CONSOLE },
+                            text = { Text("Console", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.AI_COPILOT,
+                            onClick = { activeDockTab = StudioDockTab.AI_COPILOT },
+                            text = { Text("AI Copilot", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.TEMPLATES,
@@ -342,9 +354,14 @@ fun GodotStudioScreen(
                             text = { Text("Templates", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                             icon = { Icon(Icons.Default.Dashboard, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.PROJECT_EXPORT,
+                            onClick = { activeDockTab = StudioDockTab.PROJECT_EXPORT },
+                            text = { Text("Export", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
                     }
 
-                    // Dock Content
                     Box(modifier = Modifier.fillMaxSize()) {
                         when (activeDockTab) {
                             StudioDockTab.SCENE_TREE -> {
@@ -395,6 +412,33 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
+                            StudioDockTab.CODE_EDITOR -> {
+                                CodeEditorDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
+                            StudioDockTab.TILEMAP -> {
+                                TilemapDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
+                            StudioDockTab.VISUAL_SCRIPT -> {
+                                VisualScriptDock(
+                                    selectedNode = selectedNode,
+                                    onNodeUpdated = { updatedNode ->
+                                        selectedNode = updatedNode
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
                             StudioDockTab.ASSETS -> {
                                 AssetLibraryDock(
                                     selectedNode = selectedNode,
@@ -415,11 +459,14 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
-                            StudioDockTab.VISUAL_SCRIPT -> {
-                                VisualScriptDock(
-                                    selectedNode = selectedNode,
-                                    onNodeUpdated = { updatedNode ->
-                                        selectedNode = updatedNode
+                            StudioDockTab.DEBUG_CONSOLE -> {
+                                DebugConsoleDock(project = project)
+                            }
+                            StudioDockTab.AI_COPILOT -> {
+                                AiAssistantDock(
+                                    project = project,
+                                    onProjectUpdated = { updatedProj ->
+                                        project = updatedProj
                                         runtimeScene.project = project
                                     }
                                 )
@@ -434,6 +481,16 @@ fun GodotStudioScreen(
                                         Toast.makeText(context, "Loaded ${templateProj.name}!", Toast.LENGTH_SHORT).show()
                                         activeDockTab = StudioDockTab.SCENE_TREE
                                     }
+                                )
+                            }
+                            StudioDockTab.PROJECT_EXPORT -> {
+                                ProjectManagerDock(
+                                    project = project,
+                                    onProjectUpdated = { updatedProj ->
+                                        project = updatedProj
+                                        runtimeScene.project = project
+                                    },
+                                    storageManager = storageManager
                                 )
                             }
                         }

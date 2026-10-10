@@ -10,6 +10,7 @@ enum class NodeType {
     RIGID_BODY_2D,
     STATIC_BODY_2D,
     AREA_2D,
+    TILEMAP_2D,
     CPU_PARTICLES_2D,
     CAMERA_2D,
     PARALLAX_BACKGROUND_2D,
@@ -87,6 +88,12 @@ data class GameNode(
     var animationCols: Int = 4,
     var animationRows: Int = 1,
     var currentAnimation: String = "default",
+
+    // Tilemap
+    var tilemapCols: Int = 20,
+    var tilemapRows: Int = 12,
+    var tilemapTileSize: Float = 32f,
+    var tilemapData: String = "", // CSV representation of tile ids
     
     // Physics
     var hasPhysics: Boolean = false,
@@ -129,6 +136,9 @@ data class GameNode(
     var spawnPrefab: String = "bullet",
     var scoreValue: Int = 100,
     var soundOnAction: String = "jump",
+
+    // Text GDScript Code
+    var scriptCode: String = "",
 
     // Combat & Health
     var health: Int = 3,
