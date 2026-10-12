@@ -35,7 +35,11 @@ enum class StudioDockTab {
     SCENE_TREE,
     INSPECTOR,
     ASSETS,
-    VISUAL_SCRIPT,
+    CODE_SCRIPT,
+    TILEMAP,
+    AI_ASSISTANT,
+    CONSOLE,
+    EXPORT,
     TEMPLATES
 }
 
@@ -331,10 +335,34 @@ fun GodotStudioScreen(
                             icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
-                            selected = activeDockTab == StudioDockTab.VISUAL_SCRIPT,
-                            onClick = { activeDockTab = StudioDockTab.VISUAL_SCRIPT },
-                            text = { Text("Script", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                            icon = { Icon(Icons.Default.Javascript, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                            selected = activeDockTab == StudioDockTab.CODE_SCRIPT,
+                            onClick = { activeDockTab = StudioDockTab.CODE_SCRIPT },
+                            text = { Text("Code", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.TILEMAP,
+                            onClick = { activeDockTab = StudioDockTab.TILEMAP },
+                            text = { Text("Tilemap", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.GridOn, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.AI_ASSISTANT,
+                            onClick = { activeDockTab = StudioDockTab.AI_ASSISTANT },
+                            text = { Text("AI Agent", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.CONSOLE,
+                            onClick = { activeDockTab = StudioDockTab.CONSOLE },
+                            text = { Text("Console", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                        )
+                        Tab(
+                            selected = activeDockTab == StudioDockTab.EXPORT,
+                            onClick = { activeDockTab = StudioDockTab.EXPORT },
+                            text = { Text("Export", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            icon = { Icon(Icons.Default.Android, contentDescription = null, modifier = Modifier.size(14.dp)) }
                         )
                         Tab(
                             selected = activeDockTab == StudioDockTab.TEMPLATES,
@@ -415,14 +443,49 @@ fun GodotStudioScreen(
                                     }
                                 )
                             }
-                            StudioDockTab.VISUAL_SCRIPT -> {
-                                VisualScriptDock(
+                            StudioDockTab.CODE_SCRIPT -> {
+                                CodeEditorDock(
                                     selectedNode = selectedNode,
                                     onNodeUpdated = { updatedNode ->
                                         selectedNode = updatedNode
                                         runtimeScene.project = project
+                                    },
+                                    onAiFixRequest = { code ->
+                                        activeDockTab = StudioDockTab.AI_ASSISTANT
                                     }
                                 )
+                            }
+                            StudioDockTab.TILEMAP -> {
+                                TilemapEditorDock(
+                                    tilemap = com.example.engine.tilemap.Tilemap(),
+                                    onTilemapChanged = {
+                                        runtimeScene.project = project
+                                    }
+                                )
+                            }
+                            StudioDockTab.AI_ASSISTANT -> {
+                                AiAssistantDock(
+                                    aiAgent = remember { com.example.studio.ai.StudioAiAgent() },
+                                    project = project,
+                                    selectedNode = selectedNode,
+                                    onProjectUpdated = { updatedProj ->
+                                        project = updatedProj
+                                        runtimeScene.project = project
+                                    },
+                                    onScriptGenerated = { generatedScript ->
+                                        selectedNode?.let { node ->
+                                            node.scriptContent = generatedScript
+                                            runtimeScene.project = project
+                                        }
+                                        activeDockTab = StudioDockTab.CODE_SCRIPT
+                                    }
+                                )
+                            }
+                            StudioDockTab.CONSOLE -> {
+                                ConsoleDock()
+                            }
+                            StudioDockTab.EXPORT -> {
+                                ExportDock(project = project)
                             }
                             StudioDockTab.TEMPLATES -> {
                                 TemplatesDock(
